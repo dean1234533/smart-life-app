@@ -1,0 +1,60 @@
+{
+  "name": "TimelineEvent",
+  "type": "object",
+  "properties": {
+    "event_type": {
+      "type": "string",
+      "enum": [
+        "note",
+        "meeting",
+        "conversation",
+        "decision",
+        "task",
+        "promise",
+        "milestone"
+      ],
+      "description": "Type of timeline event"
+    },
+    "title": {
+      "type": "string"
+    },
+    "description": {
+      "type": "string"
+    },
+    "event_date": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "related_people": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "source_type": {
+      "type": "string",
+      "enum": [
+        "note",
+        "voice",
+        "manual",
+        "ai_generated"
+      ]
+    },
+    "source_id": {
+      "type": "string"
+    },
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "ai_summary": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "event_type",
+    "title"
+  ]
+}

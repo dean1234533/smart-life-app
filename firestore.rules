@@ -1,0 +1,28 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Users can only read/write their own data
+    match /users/{uid} {
+      allow read, write: if request.auth != null && request.auth.uid == uid;
+
+      // All subcollections — authenticated user owns them
+      match /{subcollection}/{docId} {
+        allow read, write: if request.auth != null && request.auth.uid == uid;
+      }
+    }
+
+    // Invites: anyone can read (to check validity), only admin can write
+    match /invites/{inviteId} {
+      allow read: if true;
+      allow write: if request.auth != null && request.auth.uid == "REPLACE_WITH_ADMIN_UID";
+    }
+
+    // Slug index: public read (for booking page), only owner can write
+    match /slugIndex/{slugId} {
+      allow read: if true;
+      allow write: if request.auth != null;
+    }
+  }
+}

@@ -1,0 +1,35 @@
+{
+  "name": "AvailabilitySlot",
+  "type": "object",
+  "properties": {
+    "day_of_week": {
+      "type": "number",
+      "description": "0=Sun, 1=Mon ... 6=Sat"
+    },
+    "start_time": {
+      "type": "string",
+      "description": "HH:MM format e.g. 09:00"
+    },
+    "end_time": {
+      "type": "string",
+      "description": "HH:MM format e.g. 17:00"
+    },
+    "slot_duration_minutes": {
+      "type": "number",
+      "default": 30
+    },
+    "label": {
+      "type": "string",
+      "description": "e.g. Morning slots"
+    },
+    "is_active": {
+      "type": "boolean",
+      "default": true
+    }
+  },
+  "required": [
+    "day_of_week",
+    "start_time",
+    "end_time"
+  ]
+}

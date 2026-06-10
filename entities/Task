@@ -1,0 +1,75 @@
+{
+  "name": "Task",
+  "type": "object",
+  "properties": {
+    "title": {
+      "type": "string",
+      "description": "Task title"
+    },
+    "description": {
+      "type": "string",
+      "description": "Task description"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "in_progress",
+        "completed",
+        "cancelled"
+      ],
+      "default": "pending"
+    },
+    "priority": {
+      "type": "string",
+      "enum": [
+        "low",
+        "medium",
+        "high",
+        "urgent"
+      ],
+      "default": "medium"
+    },
+    "due_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "source_type": {
+      "type": "string",
+      "enum": [
+        "note",
+        "voice",
+        "manual",
+        "ai_suggested"
+      ],
+      "description": "Where this task was extracted from"
+    },
+    "source_id": {
+      "type": "string"
+    },
+    "related_people": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "is_contextual": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether this is a contextual reminder"
+    },
+    "context_trigger": {
+      "type": "string",
+      "description": "What triggers this contextual reminder"
+    }
+  },
+  "required": [
+    "title"
+  ]
+}

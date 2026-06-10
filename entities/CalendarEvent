@@ -1,0 +1,72 @@
+{
+  "name": "CalendarEvent",
+  "type": "object",
+  "properties": {
+    "title": {
+      "type": "string"
+    },
+    "description": {
+      "type": "string"
+    },
+    "event_date": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "end_date": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "all_day": {
+      "type": "boolean",
+      "default": false
+    },
+    "reminder_minutes": {
+      "type": "number",
+      "description": "Minutes before event to remind",
+      "default": 30
+    },
+    "reminder_sent": {
+      "type": "boolean",
+      "default": false
+    },
+    "source_type": {
+      "type": "string",
+      "enum": [
+        "note",
+        "recording",
+        "manual",
+        "booking"
+      ],
+      "default": "manual"
+    },
+    "source_id": {
+      "type": "string"
+    },
+    "attendees": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "location": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "confirmed",
+        "tentative",
+        "cancelled"
+      ],
+      "default": "confirmed"
+    },
+    "color": {
+      "type": "string",
+      "default": "cyan"
+    }
+  },
+  "required": [
+    "title",
+    "event_date"
+  ]
+}

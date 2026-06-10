@@ -1,0 +1,98 @@
+{
+  "name": "Note",
+  "type": "object",
+  "properties": {
+    "title": {
+      "type": "string",
+      "description": "Note title"
+    },
+    "content": {
+      "type": "string",
+      "description": "Raw note content"
+    },
+    "ai_summary": {
+      "type": "string",
+      "description": "AI-generated summary"
+    },
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Auto-detected tags"
+    },
+    "detected_intent": {
+      "type": "string",
+      "enum": [
+        "shopping",
+        "meeting",
+        "task",
+        "reminder",
+        "general",
+        "decision",
+        "promise"
+      ],
+      "description": "AI-detected intent"
+    },
+    "extracted_actions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string"
+          },
+          "due_date": {
+            "type": "string"
+          },
+          "priority": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          }
+        }
+      },
+      "description": "AI-extracted action items"
+    },
+    "related_people": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "People mentioned in the note"
+    },
+    "related_events": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Events detected in the note"
+    },
+    "ai_suggestions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string"
+          },
+          "suggestion": {
+            "type": "string"
+          },
+          "confidence": {
+            "type": "number"
+          }
+        }
+      },
+      "description": "AI suggestions based on note content"
+    },
+    "is_pinned": {
+      "type": "boolean",
+      "default": false
+    }
+  },
+  "required": [
+    "content"
+  ]
+}

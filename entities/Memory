@@ -1,0 +1,62 @@
+{
+  "name": "Memory",
+  "type": "object",
+  "properties": {
+    "category": {
+      "type": "string",
+      "enum": [
+        "person",
+        "preference",
+        "routine",
+        "decision",
+        "promise",
+        "event",
+        "product",
+        "place"
+      ],
+      "description": "Memory category"
+    },
+    "subject": {
+      "type": "string",
+      "description": "Who or what the memory is about"
+    },
+    "detail": {
+      "type": "string",
+      "description": "The memory detail"
+    },
+    "confidence": {
+      "type": "number",
+      "description": "Confidence score 0-1"
+    },
+    "source_type": {
+      "type": "string",
+      "enum": [
+        "note",
+        "voice",
+        "manual",
+        "ai_inferred"
+      ],
+      "description": "Where this memory came from"
+    },
+    "source_id": {
+      "type": "string",
+      "description": "ID of the source entity"
+    },
+    "last_referenced": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When this memory was last relevant"
+    },
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "required": [
+    "category",
+    "subject",
+    "detail"
+  ]
+}

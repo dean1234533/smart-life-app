@@ -1,0 +1,114 @@
+{
+  "name": "VoiceRecording",
+  "type": "object",
+  "properties": {
+    "title": {
+      "type": "string",
+      "description": "Recording title"
+    },
+    "audio_url": {
+      "type": "string",
+      "description": "URL of the audio file"
+    },
+    "duration_seconds": {
+      "type": "number",
+      "description": "Duration in seconds"
+    },
+    "transcription": {
+      "type": "string",
+      "description": "Full transcription text"
+    },
+    "ai_summary": {
+      "type": "string",
+      "description": "AI-generated summary"
+    },
+    "extracted_actions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string"
+          },
+          "due_date": {
+            "type": "string"
+          },
+          "assignee": {
+            "type": "string"
+          },
+          "priority": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "detected_dates": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "date": {
+            "type": "string"
+          },
+          "context": {
+            "type": "string"
+          },
+          "confidence": {
+            "type": "number"
+          }
+        }
+      }
+    },
+    "detected_decisions": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "detected_promises": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "promise": {
+            "type": "string"
+          },
+          "by_whom": {
+            "type": "string"
+          },
+          "to_whom": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "related_people": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "recording",
+        "processing",
+        "completed",
+        "error"
+      ],
+      "default": "recording"
+    }
+  },
+  "required": [
+    "title"
+  ]
+}
