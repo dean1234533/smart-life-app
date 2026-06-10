@@ -14,6 +14,7 @@ export function useUserPrefs() {
         setPrefs({
           autoScan: profile?.autoScan ?? false,
           apiKey: profile?.apiKey ?? '',
+          background: profile?.background ?? 'hexagons',
         });
       })
       .finally(() => setLoading(false));

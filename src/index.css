@@ -173,3 +173,53 @@
 .wave-bar {
   animation: wave 1.2s ease-in-out infinite;
 }
+/* ── Aurora background ───────────────────────────────────────────────── */
+.aurora-blob {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(80px);
+  opacity: 0.45;
+  animation: aurora-float 12s ease-in-out infinite;
+}
+.aurora-1 { width: 60vw; height: 60vw; top: -10%; left: -10%; background: radial-gradient(circle, #7c3aed, transparent 70%); animation-duration: 14s; }
+.aurora-2 { width: 50vw; height: 50vw; top: 20%; right: -15%; background: radial-gradient(circle, #0ea5e9, transparent 70%); animation-duration: 18s; animation-delay: -4s; }
+.aurora-3 { width: 55vw; height: 55vw; bottom: 0%; left: 10%; background: radial-gradient(circle, #8b5cf6, transparent 70%); animation-duration: 22s; animation-delay: -8s; }
+.aurora-4 { width: 40vw; height: 40vw; bottom: 20%; right: 5%; background: radial-gradient(circle, #06b6d4, transparent 70%); animation-duration: 16s; animation-delay: -2s; }
+@keyframes aurora-float {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  33% { transform: translate(4%, 6%) scale(1.08); }
+  66% { transform: translate(-5%, -4%) scale(0.94); }
+}
+
+/* ── Stars background ────────────────────────────────────────────────── */
+.star { animation: star-twinkle ease-in-out infinite; }
+@keyframes star-twinkle {
+  0%, 100% { opacity: 0.2; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.4); }
+}
+
+/* ── Waves background ────────────────────────────────────────────────── */
+.wave {
+  position: absolute;
+  left: -50%;
+  width: 200%;
+  border-radius: 40%;
+  opacity: 0.12;
+  animation: wave-rotate linear infinite;
+}
+.wave-1 { height: 200px; bottom: -60px; background: rgba(34,211,238,1); animation-duration: 14s; }
+.wave-2 { height: 200px; bottom: -80px; background: rgba(99,102,241,1); animation-duration: 20s; animation-delay: -5s; }
+.wave-3 { height: 200px; bottom: -100px; background: rgba(14,165,233,1); animation-duration: 26s; animation-delay: -10s; }
+@keyframes wave-rotate {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* ── Bubbles background ──────────────────────────────────────────────── */
+.bubble { animation: bubble-rise ease-in infinite; }
+@keyframes bubble-rise {
+  0% { transform: translateY(0) scale(1); opacity: 0; }
+  10% { opacity: 1; }
+  90% { opacity: 0.6; }
+  100% { transform: translateY(-110vh) scale(1.2); opacity: 0; }
+}

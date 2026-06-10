@@ -14,6 +14,7 @@ import { updateUserDoc, calendarEventsService } from "@/lib/firestoreService";
 import { useCurrentUid } from "@/hooks/useCurrentUid";
 import { useUserPrefs } from "@/hooks/useUserPrefs";
 import { connectGoogleCalendar, disconnectGoogleCalendar, checkGoogleCalendarStatus } from "@/services/googleCalendarService";
+import { BACKGROUNDS } from "@/components/layout/AnimatedBackground";
 import { downloadICS } from "@/services/icalService";
 
 const ADMIN_UID = import.meta.env.VITE_ADMIN_UID || "";
@@ -200,6 +201,29 @@ export default function Settings() {
               <p className="text-xs text-muted-foreground">{prefs.autoScan ? "On — saves everything automatically" : "Off — manual analysis only"}</p>
             </div>
             <Switch checked={prefs.autoScan} onCheckedChange={toggleAutoScan} />
+          </div>
+        </section>
+
+        <section className="p-4 rounded-2xl bg-card border border-border/50 space-y-3">
+          <div className="flex items-center gap-2">
+            <Sparkles className="w-4 h-4 text-accent" />
+            <h2 className="text-sm font-heading font-semibold">App Background</h2>
+          </div>
+          <div className="grid grid-cols-4 gap-2">
+            {BACKGROUNDS.map((bg) => (
+              <button key={bg.id} onClick={() => setPref('background', bg.id)}
+                className={`relative aspect-square rounded-xl overflow-hidden border-2 transition-all ${prefs.background === bg.id ? 'border-accent scale-105' : 'border-border/50 hover:border-accent/50'}`}>
+                <div className="absolute inset-0" style={{ background: bg.preview || '#0d1520' }} />
+                <div className="absolute inset-0 flex items-end justify-center pb-1">
+                  <span className="text-[9px] font-medium text-white/80">{bg.label}</span>
+                </div>
+                {prefs.background === bg.id && (
+                  <div className="absolute top-1 right-1 w-3 h-3 rounded-full bg-accent flex items-center justify-center">
+                    <Check className="w-2 h-2 text-accent-foreground" />
+                  </div>
+                )}
+              </button>
+            ))}
           </div>
         </section>
 
