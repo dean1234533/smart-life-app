@@ -97,7 +97,7 @@ async function transcribeWithGroq(apiKey, audioBlob) {
 }
 
 function shouldFallthrough(err) {
-  return !err.status || err.status === 400 || err.status === 401 || err.status === 403 || err.status >= 429;
+  return !err.status || err.status === 400 || err.status === 401 || err.status === 403 || err.status === 404 || err.status >= 429;
 }
 
 async function withAdminFallback(geminiFn, cerebrasFn, groqFn) {
