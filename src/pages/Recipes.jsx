@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
 import { recipesService, shoppingListsService } from "@/lib/firestoreService";
-import { useCurrentUid } from \"@/hooks/useCurrentUid\";
+import { useCurrentUid } from "@/hooks/useCurrentUid";
 
 export default function Recipes() {
   const navigate = useNavigate();

@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
 import { expensesService } from "@/lib/firestoreService";
-import { useCurrentUid } from \"@/hooks/useCurrentUid\";
+import { useCurrentUid } from "@/hooks/useCurrentUid";
 import { format } from "date-fns";
 
 const CURRENCIES = ["GBP", "USD", "EUR", "CAD", "AUD"];
