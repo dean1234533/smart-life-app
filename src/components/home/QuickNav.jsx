@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import {
   LayoutGrid, X, FileText, Mic, Calendar, CheckSquare, Clock, Bot,
   Home, Share2, ShoppingCart, Users, DollarSign, ChefHat,
-  MessageSquare, UserCog, BookOpen, Link as LinkIcon
+  MessageSquare, UserCog, BookOpen, Link as LinkIcon, Dumbbell
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -23,6 +23,7 @@ const NAV_ITEMS = [
   { label: "Follow-ups", icon: BookOpen,       path: "/follow-ups" },
   { label: "Availability", icon: UserCog,      path: "/availability" },
   { label: "Booking",    icon: LinkIcon,       path: "/booking-links" },
+  { label: "Fitness",    icon: Dumbbell,       path: "/fitness" },
 ];
 
 export default function QuickNav() {

@@ -254,5 +254,23 @@ export const memoriesService = {
   delete: (uid, id) => deleteSub(uid, 'memories', id),
 };
 
+// ── Workouts ───────────────────────────────────────────────────────────────
+export const workoutsService = {
+  list: (uid, opts) => listSub(uid, 'workouts', opts),
+  get: (uid, id) => getSub(uid, 'workouts', id),
+  create: (uid, data) => createSub(uid, 'workouts', data),
+  update: (uid, id, data) => updateSub(uid, 'workouts', id, data),
+  delete: (uid, id) => deleteSub(uid, 'workouts', id),
+};
+
+// ── Nutrition ──────────────────────────────────────────────────────────────
+export const nutritionService = {
+  list: (uid, opts) => listSub(uid, 'nutrition', opts),
+  get: (uid, id) => getSub(uid, 'nutrition', id),
+  create: (uid, data) => createSub(uid, 'nutrition', data),
+  update: (uid, id, data) => updateSub(uid, 'nutrition', id, data),
+  delete: (uid, id) => deleteSub(uid, 'nutrition', id),
+};
+
 // ── Firestore Timestamp helpers ────────────────────────────────────────────
 export { serverTimestamp, Timestamp };

@@ -34,6 +34,7 @@ import Contacts from '@/pages/Contacts';
 import Expenses from '@/pages/Expenses';
 import FollowUps from '@/pages/FollowUps';
 import BookingLinks from '@/pages/BookingLinks';
+import Fitness from '@/pages/Fitness';
 import Settings from '@/pages/Settings';
 import AdminPanel from '@/pages/AdminPanel';
 
@@ -112,6 +113,7 @@ const AuthenticatedApp = () => {
           <Route path="/expenses" element={<Expenses />} />
           <Route path="/follow-ups" element={<FollowUps />} />
           <Route path="/booking-links" element={<BookingLinks />} />
+          <Route path="/fitness" element={<Fitness />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="/admin" element={<AdminPanel />} />
         </Route>
