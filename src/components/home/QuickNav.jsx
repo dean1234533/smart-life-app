@@ -79,18 +79,25 @@ export default function QuickNav() {
                   );
                 })}
                 <button
-                  onClick={async () => {
+                  onClick={() => {
                     const url = `${window.location.origin}/book`;
-                    try {
-                      await navigator.clipboard.writeText(url);
-                      toast.success("Booking link copied!");
-                    } catch {
-                      const el = document.createElement("input");
+                    const fallback = () => {
+                      const el = document.createElement("textarea");
                       el.value = url;
+                      el.style.cssText = "position:fixed;opacity:0";
                       document.body.appendChild(el);
+                      el.focus();
                       el.select();
-                      document.execCommand("copy");
+                      try { document.execCommand("copy"); } catch {}
                       document.body.removeChild(el);
+                    };
+                    if (navigator.clipboard?.writeText) {
+                      navigator.clipboard.writeText(url).then(
+                        () => toast.success("Booking link copied!"),
+                        () => { fallback(); toast.success("Booking link copied!"); }
+                      );
+                    } else {
+                      fallback();
                       toast.success("Booking link copied!");
                     }
                     setOpen(false);

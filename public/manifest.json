@@ -1,0 +1,18 @@
+{
+  "name": "Smart Life",
+  "short_name": "Smart Life",
+  "description": "Your AI-powered life organizer",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0d1520",
+  "theme_color": "#22d3ee",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

@@ -19,10 +19,10 @@ export default function DailyBriefing({ user, taskCount, noteCount, memoryCount 
 
       <div className="relative z-10">
         <div className="flex items-center gap-3 mb-2">
-          <div className="flex items-center justify-center w-9 h-9 rounded-xl bg-accent/20 border border-accent/40">
-            <Icon className="w-5 h-5 text-accent" style={{ filter: 'drop-shadow(0 0 6px hsl(var(--accent) / 0.8))' }} />
+          <div className="flex items-center justify-center w-9 h-9 rounded-xl bg-white/20 border border-white/30">
+            <Icon className="w-5 h-5 text-white drop-shadow-md" />
           </div>
-          <span className="text-base font-heading font-semibold tracking-wide text-accent">
+          <span className="text-base font-heading font-semibold tracking-wide text-white/90">
             {greeting}
           </span>
         </div>
