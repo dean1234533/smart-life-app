@@ -1,17 +1,25 @@
 const ADMIN_UID = import.meta.env.VITE_ADMIN_UID || '';
-const ADMIN_GEMINI_KEY = import.meta.env.VITE_GEMINI_API_KEY;
-const ADMIN_CEREBRAS_KEY = import.meta.env.VITE_CEREBRAS_API_KEY;
-const ADMIN_GROQ_KEY = import.meta.env.VITE_GROQ_API_KEY;
 
-const GEMINI_MODEL = 'gemini-2.0-flash';
-const CEREBRAS_MODEL = 'llama3.1-70b';
-const GROQ_MODEL = 'llama-3.3-70b-versatile';
+// ── Admin API keys (fallback chain — any missing keys are simply skipped) ───
+const ADMIN_GEMINI_KEY     = import.meta.env.VITE_GEMINI_API_KEY;
+const ADMIN_GROQ_KEY       = import.meta.env.VITE_GROQ_API_KEY;
+const ADMIN_CEREBRAS_KEY   = import.meta.env.VITE_CEREBRAS_API_KEY;
+const ADMIN_MISTRAL_KEY    = import.meta.env.VITE_MISTRAL_API_KEY;
+const ADMIN_TOGETHER_KEY   = import.meta.env.VITE_TOGETHER_API_KEY;
+const ADMIN_OPENROUTER_KEY = import.meta.env.VITE_OPENROUTER_API_KEY;
+
+const GEMINI_MODEL     = 'gemini-2.0-flash';
+const GROQ_MODEL       = 'llama-3.3-70b-versatile';
+const CEREBRAS_MODEL   = 'llama3.1-70b';
+const MISTRAL_MODEL    = 'mistral-small-latest';
+const TOGETHER_MODEL   = 'meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo';
+const OPENROUTER_MODEL = 'mistralai/mistral-7b-instruct:free';
+
+// ── Provider callers ─────────────────────────────────────────────────────────
 
 async function callGemini(apiKey, prompt, jsonSchema = null, parts = null) {
   const contentParts = parts || [{ text: prompt }];
-  const body = {
-    contents: [{ role: 'user', parts: contentParts }],
-  };
+  const body = { contents: [{ role: 'user', parts: contentParts }] };
   if (jsonSchema) {
     body.generationConfig = {
       responseMimeType: 'application/json',
@@ -24,34 +32,26 @@ async function callGemini(apiKey, prompt, jsonSchema = null, parts = null) {
   );
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    const e = new Error(err.error?.message || `Gemini API error ${res.status}`);
+    const e = new Error(err.error?.message || `Gemini error ${res.status}`);
     e.status = res.status;
     throw e;
   }
   const data = await res.json();
   const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
-  if (jsonSchema) {
-    try { return JSON.parse(text); } catch { return {}; }
-  }
+  if (jsonSchema) { try { return JSON.parse(text); } catch { return {}; } }
   return text;
 }
 
-async function callOpenAICompat(baseURL, apiKey, model, prompt, jsonSchema = null) {
+async function callOpenAICompat(baseURL, apiKey, model, prompt, jsonSchema = null, extraHeaders = {}) {
   const userContent = jsonSchema
     ? `${prompt}\n\nRespond with valid JSON matching this schema: ${JSON.stringify(jsonSchema)}`
     : prompt;
-
-  const body = {
-    model,
-    messages: [{ role: 'user', content: userContent }],
-  };
-  if (jsonSchema) {
-    body.response_format = { type: 'json_object' };
-  }
+  const body = { model, messages: [{ role: 'user', content: userContent }] };
+  if (jsonSchema) body.response_format = { type: 'json_object' };
 
   const res = await fetch(`${baseURL}/chat/completions`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}`, ...extraHeaders },
     body: JSON.stringify(body),
   });
   if (!res.ok) {
@@ -62,19 +62,20 @@ async function callOpenAICompat(baseURL, apiKey, model, prompt, jsonSchema = nul
   }
   const data = await res.json();
   const text = data.choices?.[0]?.message?.content || '';
-  if (jsonSchema) {
-    try { return JSON.parse(text); } catch { return {}; }
-  }
+  if (jsonSchema) { try { return JSON.parse(text); } catch { return {}; } }
   return text;
 }
 
-async function callCerebras(apiKey, prompt, jsonSchema = null) {
-  return callOpenAICompat('https://api.cerebras.ai/v1', apiKey, CEREBRAS_MODEL, prompt, jsonSchema);
-}
+const callGroq       = (k, p, s) => callOpenAICompat('https://api.groq.com/openai/v1', k, GROQ_MODEL, p, s);
+const callCerebras   = (k, p, s) => callOpenAICompat('https://api.cerebras.ai/v1', k, CEREBRAS_MODEL, p, s);
+const callMistral    = (k, p, s) => callOpenAICompat('https://api.mistral.ai/v1', k, MISTRAL_MODEL, p, s);
+const callTogether   = (k, p, s) => callOpenAICompat('https://api.together.xyz/v1', k, TOGETHER_MODEL, p, s);
+const callOpenRouter = (k, p, s) => callOpenAICompat(
+  'https://openrouter.ai/api/v1', k, OPENROUTER_MODEL, p, s,
+  { 'HTTP-Referer': 'https://smart-life-app.pages.dev', 'X-Title': 'Smart Life App' }
+);
 
-async function callGroq(apiKey, prompt, jsonSchema = null) {
-  return callOpenAICompat('https://api.groq.com/openai/v1', apiKey, GROQ_MODEL, prompt, jsonSchema);
-}
+// ── Transcription ─────────────────────────────────────────────────────────────
 
 async function transcribeWithGroq(apiKey, audioBlob) {
   const ext = audioBlob.type?.includes('mp4') ? 'mp4'
@@ -84,7 +85,6 @@ async function transcribeWithGroq(apiKey, audioBlob) {
   const formData = new FormData();
   formData.append('file', audioBlob, `audio.${ext}`);
   formData.append('model', 'whisper-large-v3');
-
   const res = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
     method: 'POST',
     headers: { Authorization: `Bearer ${apiKey}` },
@@ -100,52 +100,57 @@ async function transcribeWithGroq(apiKey, audioBlob) {
   return data.text || '';
 }
 
+// ── Fallback engine ───────────────────────────────────────────────────────────
+
+// Falls through on: no response, wrong/expired key (401/403), quota/credits (402/429), server errors (5xx).
+// Does NOT fall through on unexpected client errors (405, 422, etc.) that indicate a code bug.
 function shouldFallthrough(err) {
-  return !err.status || err.status === 400 || err.status === 401 || err.status === 403 || err.status === 404 || err.status >= 429;
+  const s = err.status;
+  return !s || s === 400 || s === 401 || s === 402 || s === 403 || s === 404 || s >= 429;
 }
 
-async function withAdminFallback(geminiFn, cerebrasFn, groqFn) {
-  if (ADMIN_GEMINI_KEY) {
-    try { return await geminiFn(); } catch (err) {
-      if (!shouldFallthrough(err)) throw err;
+// Tries each [key, fn] pair in order, skipping missing keys, falling through on recoverable errors.
+async function runWithFallback(providers) {
+  const available = providers.filter(([key]) => !!key);
+  if (available.length === 0) throw new Error('No AI keys configured — add at least one key in your .env');
+  for (let i = 0; i < available.length; i++) {
+    const [key, fn] = available[i];
+    const isLast = i === available.length - 1;
+    try {
+      return await fn(key);
+    } catch (err) {
+      if (isLast || !shouldFallthrough(err)) throw err;
+      // else: try next provider
     }
   }
-  if (ADMIN_CEREBRAS_KEY) {
-    try { return await cerebrasFn(); } catch (err) {
-      if (!shouldFallthrough(err)) throw err;
-    }
-  }
-  if (ADMIN_GROQ_KEY) {
-    return groqFn();
-  }
-  throw new Error('All admin AI keys exhausted or unavailable');
 }
+
+// ── Public API ────────────────────────────────────────────────────────────────
 
 export async function invokeGemini(prompt, jsonSchema = null, uid = '', userApiKey = '') {
   if (uid === ADMIN_UID) {
-    return withAdminFallback(
-      () => callGemini(ADMIN_GEMINI_KEY, prompt, jsonSchema),
-      () => callCerebras(ADMIN_CEREBRAS_KEY, prompt, jsonSchema),
-      () => callGroq(ADMIN_GROQ_KEY, prompt, jsonSchema)
-    );
+    return runWithFallback([
+      [ADMIN_GEMINI_KEY,     (k) => callGemini(k, prompt, jsonSchema)],
+      [ADMIN_GROQ_KEY,       (k) => callGroq(k, prompt, jsonSchema)],
+      [ADMIN_CEREBRAS_KEY,   (k) => callCerebras(k, prompt, jsonSchema)],
+      [ADMIN_MISTRAL_KEY,    (k) => callMistral(k, prompt, jsonSchema)],
+      [ADMIN_TOGETHER_KEY,   (k) => callTogether(k, prompt, jsonSchema)],
+      [ADMIN_OPENROUTER_KEY, (k) => callOpenRouter(k, prompt, jsonSchema)],
+    ]);
   }
-
   if (!userApiKey) throw new Error('No API key configured');
   return callGemini(userApiKey, prompt, jsonSchema);
 }
 
-// Runs one step of an agentic loop with Gemini function calling.
-// contents: [{role:'user'|'model', parts:[...]}]
-// Returns the model's content object ({role, parts}) which may contain functionCall parts or text.
+// Agent function calling — Gemini-only (other providers don't support this API format).
+// Falls back to plain text via the full chain if Gemini is unavailable.
 async function callGeminiAgentStep(apiKey, contents, toolDeclarations, systemPrompt) {
   const body = { contents };
   if (toolDeclarations?.length) {
     body.tools = [{ functionDeclarations: toolDeclarations }];
     body.toolConfig = { functionCallingConfig: { mode: 'AUTO' } };
   }
-  if (systemPrompt) {
-    body.systemInstruction = { parts: [{ text: systemPrompt }] };
-  }
+  if (systemPrompt) body.systemInstruction = { parts: [{ text: systemPrompt }] };
   const res = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`,
     { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }
@@ -161,14 +166,34 @@ async function callGeminiAgentStep(apiKey, contents, toolDeclarations, systemPro
 }
 
 export async function invokeGeminiAgent(contents, toolDeclarations, systemPrompt, uid = '', userApiKey = '') {
-  const apiKey = uid === ADMIN_UID ? ADMIN_GEMINI_KEY : userApiKey;
-  if (!apiKey) throw new Error('No API key configured');
-  return callGeminiAgentStep(apiKey, contents, toolDeclarations, systemPrompt);
+  // Try Gemini (required for function calling)
+  const geminiKey = uid === ADMIN_UID ? ADMIN_GEMINI_KEY : userApiKey;
+  if (geminiKey) {
+    try {
+      return await callGeminiAgentStep(geminiKey, contents, toolDeclarations, systemPrompt);
+    } catch (err) {
+      if (!shouldFallthrough(err)) throw err;
+      // Gemini down/over-quota — fall back to plain text via the chain (no tool calls)
+    }
+  }
+  // Fallback: strip tool declarations and get a plain text response from any available provider
+  if (uid === ADMIN_UID) {
+    const lastUserMsg = [...contents].reverse().find(c => c.role === 'user');
+    const text = lastUserMsg?.parts?.find(p => p.text)?.text || '';
+    const plainText = await runWithFallback([
+      [ADMIN_GROQ_KEY,       (k) => callGroq(k, text)],
+      [ADMIN_CEREBRAS_KEY,   (k) => callCerebras(k, text)],
+      [ADMIN_MISTRAL_KEY,    (k) => callMistral(k, text)],
+      [ADMIN_TOGETHER_KEY,   (k) => callTogether(k, text)],
+      [ADMIN_OPENROUTER_KEY, (k) => callOpenRouter(k, text)],
+    ]);
+    return { role: 'model', parts: [{ text: plainText }] };
+  }
+  throw new Error('No API key configured');
 }
 
 export async function transcribeAudio(audioBlob, uid = '', userApiKey = '') {
   const arrayBuffer = await audioBlob.arrayBuffer();
-  // Chunk the conversion to avoid stack overflow on large audio files
   const bytes = new Uint8Array(arrayBuffer);
   let binary = '';
   for (let i = 0; i < bytes.length; i += 8192) {
@@ -182,16 +207,15 @@ export async function transcribeAudio(audioBlob, uid = '', userApiKey = '') {
   ];
 
   if (uid === ADMIN_UID) {
+    // Gemini supports audio natively
     if (ADMIN_GEMINI_KEY) {
       try { return await callGemini(ADMIN_GEMINI_KEY, '', null, parts); } catch (err) {
-        if (err.status !== 429 && err.status !== 503) throw err;
+        if (!shouldFallthrough(err)) throw err;
       }
     }
-    // Cerebras has no audio support — skip to Groq
-    if (ADMIN_GROQ_KEY) {
-      return transcribeWithGroq(ADMIN_GROQ_KEY, audioBlob);
-    }
-    throw new Error('All admin transcription keys exhausted or unavailable');
+    // Groq Whisper is the only other transcription option
+    if (ADMIN_GROQ_KEY) return transcribeWithGroq(ADMIN_GROQ_KEY, audioBlob);
+    throw new Error('No transcription key available — add VITE_GEMINI_API_KEY or VITE_GROQ_API_KEY');
   }
 
   if (!userApiKey) throw new Error('No API key configured');
