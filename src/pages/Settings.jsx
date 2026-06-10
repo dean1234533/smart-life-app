@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Key, Loader2, Eye, EyeOff, Check,
   LogOut, ArrowLeft, Shield, Bell, Calendar, ExternalLink, Sparkles,
@@ -13,7 +13,7 @@ import { firebaseAuth } from "@/lib/firebase";
 import { updateUserDoc, calendarEventsService } from "@/lib/firestoreService";
 import { useCurrentUid } from "@/hooks/useCurrentUid";
 import { useUserPrefs } from "@/hooks/useUserPrefs";
-import { connectGoogleCalendar, disconnectGoogleCalendar, hasValidToken } from "@/services/googleCalendarService";
+import { connectGoogleCalendar, disconnectGoogleCalendar, checkGoogleCalendarStatus } from "@/services/googleCalendarService";
 import { downloadICS } from "@/services/icalService";
 
 const ADMIN_UID = import.meta.env.VITE_ADMIN_UID || "";
@@ -28,9 +28,20 @@ export default function Settings() {
   const [showKey, setShowKey] = useState(false);
   const [savingKey, setSavingKey] = useState(false);
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
-  const [googleConnected, setGoogleConnected] = useState(hasValidToken);
+  const [googleConnected, setGoogleConnected] = useState(false);
   const [connectingGoogle, setConnectingGoogle] = useState(false);
   const [exportingICS, setExportingICS] = useState(false);
+
+  useEffect(() => {
+    checkGoogleCalendarStatus().then(setGoogleConnected);
+    // Handle redirect back from OAuth
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('calendar') === 'connected') {
+      setGoogleConnected(true);
+      toast.success('Google Calendar connected!');
+      window.history.replaceState({}, '', '/settings');
+    }
+  }, []);
 
   const saveApiKey = async () => {
     if (!uid || !apiKey.trim()) return;
@@ -51,27 +62,22 @@ export default function Settings() {
   };
 
   const handleConnectGoogle = async () => {
-    if (!import.meta.env.VITE_GOOGLE_CLIENT_ID) {
-      toast.error("Google Client ID not configured — add VITE_GOOGLE_CLIENT_ID to your env");
+    if (!import.meta.env.VITE_CALENDAR_WORKER_URL) {
+      toast.error("Calendar worker not configured — add VITE_CALENDAR_WORKER_URL to your env");
       return;
     }
     setConnectingGoogle(true);
     try {
-      await connectGoogleCalendar();
-      setGoogleConnected(true);
-      await updateUserDoc(uid, { googleCalendarConnected: true });
-      toast.success("Google Calendar connected");
+      await connectGoogleCalendar(); // redirects browser — page will reload
     } catch (err) {
       toast.error(`Failed to connect: ${err.message}`);
-    } finally {
       setConnectingGoogle(false);
     }
   };
 
   const handleDisconnectGoogle = async () => {
-    disconnectGoogleCalendar();
+    await disconnectGoogleCalendar();
     setGoogleConnected(false);
-    await updateUserDoc(uid, { googleCalendarConnected: false });
     toast.success("Google Calendar disconnected");
   };
 

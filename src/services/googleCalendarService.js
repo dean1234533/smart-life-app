@@ -1,82 +1,61 @@
-const CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID;
-const SCOPE = 'https://www.googleapis.com/auth/calendar.events';
+import { firebaseAuth } from '@/lib/firebase';
 
-let _token = null;
-let _expiry = 0;
-let _tokenClient = null;
+const WORKER_URL = import.meta.env.VITE_CALENDAR_WORKER_URL;
 
-export function hasValidToken() {
-  return !!_token && Date.now() < _expiry;
+async function getIdToken() {
+  const user = firebaseAuth.currentUser;
+  if (!user) throw new Error('Not signed in');
+  return user.getIdToken();
 }
 
-function waitForGIS() {
-  return new Promise((resolve, reject) => {
-    if (window.google?.accounts?.oauth2) return resolve();
-    let tries = 0;
-    const id = setInterval(() => {
-      if (window.google?.accounts?.oauth2) { clearInterval(id); resolve(); }
-      else if (++tries > 40) { clearInterval(id); reject(new Error('Google Identity Services failed to load')); }
-    }, 250);
-  });
+function workerHeaders(idToken) {
+  return { Authorization: `Firebase ${idToken}`, 'Content-Type': 'application/json' };
 }
 
+// Redirect the browser to start Google OAuth2 (worker handles the flow)
 export async function connectGoogleCalendar() {
-  await waitForGIS();
-  return new Promise((resolve, reject) => {
-    _tokenClient = window.google.accounts.oauth2.initTokenClient({
-      client_id: CLIENT_ID,
-      scope: SCOPE,
-      callback: (resp) => {
-        if (resp.error) return reject(new Error(resp.error));
-        _token = resp.access_token;
-        _expiry = Date.now() + (resp.expires_in - 60) * 1000;
-        resolve(_token);
-      },
+  if (!WORKER_URL) throw new Error('VITE_CALENDAR_WORKER_URL not configured');
+  const idToken = await getIdToken();
+  window.location.href = `${WORKER_URL}/auth/google/start?idToken=${encodeURIComponent(idToken)}`;
+}
+
+export async function disconnectGoogleCalendar() {
+  if (!WORKER_URL) return;
+  const idToken = await getIdToken();
+  await fetch(`${WORKER_URL}/calendar/disconnect`, {
+    method: 'DELETE',
+    headers: workerHeaders(idToken),
+  });
+}
+
+export async function checkGoogleCalendarStatus() {
+  if (!WORKER_URL) return false;
+  try {
+    const idToken = await getIdToken();
+    const resp = await fetch(`${WORKER_URL}/calendar/status`, {
+      headers: workerHeaders(idToken),
     });
-    _tokenClient.requestAccessToken({ prompt: 'consent' });
-  });
-}
-
-export async function silentRefresh() {
-  if (hasValidToken()) return _token;
-  if (!_tokenClient) return null;
-  return new Promise((resolve) => {
-    _tokenClient.callback = (resp) => {
-      if (resp.error) return resolve(null);
-      _token = resp.access_token;
-      _expiry = Date.now() + (resp.expires_in - 60) * 1000;
-      resolve(_token);
-    };
-    _tokenClient.requestAccessToken({ prompt: '' });
-  });
-}
-
-export function disconnectGoogleCalendar() {
-  if (_token && window.google?.accounts?.oauth2) {
-    window.google.accounts.oauth2.revoke(_token);
+    if (!resp.ok) return false;
+    const data = await resp.json();
+    return data.connected === true;
+  } catch {
+    return false;
   }
-  _token = null;
-  _expiry = 0;
 }
 
 export async function fetchGoogleEvents(monthStart, monthEnd) {
-  const token = await silentRefresh();
-  if (!token) throw new Error('Not connected to Google Calendar');
-
+  if (!WORKER_URL) return [];
+  const idToken = await getIdToken();
   const params = new URLSearchParams({
     timeMin: monthStart.toISOString(),
     timeMax: monthEnd.toISOString(),
-    singleEvents: 'true',
-    orderBy: 'startTime',
-    maxResults: '250',
   });
-
-  const res = await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events?${params}`, {
-    headers: { Authorization: `Bearer ${token}` },
+  const resp = await fetch(`${WORKER_URL}/calendar/events?${params}`, {
+    headers: workerHeaders(idToken),
   });
-  if (!res.ok) throw new Error(`Google Calendar error ${res.status}`);
-  const data = await res.json();
-  return (data.items || []).map((e) => ({
+  if (!resp.ok) throw new Error(`Calendar fetch failed: ${resp.status}`);
+  const data = await resp.json();
+  return (data.events || []).map((e) => ({
     id: `gcal_${e.id}`,
     title: e.summary || '(No title)',
     event_date: e.start?.dateTime || e.start?.date,
@@ -88,26 +67,29 @@ export async function fetchGoogleEvents(monthStart, monthEnd) {
 }
 
 export async function pushEventToGoogle(event) {
-  const token = await silentRefresh();
-  if (!token) return null;
+  if (!WORKER_URL) return null;
+  try {
+    const idToken = await getIdToken();
+    const startDt = event.event_date || event.date;
+    const endDt = event.end_date || new Date(new Date(startDt).getTime() + 60 * 60 * 1000).toISOString();
 
-  const startDt = event.event_date || event.date;
-  const endDt = event.end_date || new Date(new Date(startDt).getTime() + 60 * 60 * 1000).toISOString();
-
-  const res = await fetch('https://www.googleapis.com/calendar/v3/calendars/primary/events', {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      summary: event.title,
-      description: event.description || '',
-      location: event.location || '',
-      start: { dateTime: startDt },
-      end: { dateTime: endDt },
-      attendees: (event.attendees || [])
-        .filter((a) => typeof a === 'string' && a.includes('@'))
-        .map((email) => ({ email })),
-    }),
-  });
-  if (!res.ok) return null;
-  return res.json();
+    const resp = await fetch(`${WORKER_URL}/calendar/events`, {
+      method: 'POST',
+      headers: workerHeaders(idToken),
+      body: JSON.stringify({
+        summary: event.title,
+        description: event.description || '',
+        location: event.location || '',
+        start: { dateTime: startDt },
+        end: { dateTime: endDt },
+        attendees: (event.attendees || [])
+          .filter((a) => typeof a === 'string' && a.includes('@'))
+          .map((email) => ({ email })),
+      }),
+    });
+    if (!resp.ok) return null;
+    return resp.json();
+  } catch {
+    return null;
+  }
 }

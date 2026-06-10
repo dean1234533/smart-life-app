@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { calendarEventsService, tasksService, notesService } from "@/lib/firestoreService";
 import { useCurrentUid } from "@/hooks/useCurrentUid";
-import { fetchGoogleEvents, hasValidToken } from "@/services/googleCalendarService";
+import { fetchGoogleEvents, checkGoogleCalendarStatus } from "@/services/googleCalendarService";
 import { startOfMonth, endOfMonth } from "date-fns";
 
 import { format, eachDayOfInterval, isSameDay, addMonths, subMonths, isToday } from "date-fns";
@@ -25,16 +25,19 @@ export default function CalendarView() {
   const queryClient = useQueryClient();
 
   useEffect(() => {
-    if (!hasValidToken()) return;
-    fetchGoogleEvents(startOfMonth(currentMonth), endOfMonth(currentMonth))
-      .then(setGoogleEvents)
-      .catch(() => {});
+    checkGoogleCalendarStatus().then((connected) => {
+      if (!connected) return;
+      fetchGoogleEvents(startOfMonth(currentMonth), endOfMonth(currentMonth))
+        .then(setGoogleEvents)
+        .catch(() => {});
+    });
   }, [currentMonth]);
 
   const createEventMutation = useMutation({
     mutationFn: async (data) => {
       const event = await calendarEventsService.create(uid, data);
-      if (hasValidToken()) {
+      const connected = await checkGoogleCalendarStatus();
+      if (connected) {
         const { pushEventToGoogle } = await import("@/services/googleCalendarService");
         await pushEventToGoogle(data).catch(() => {});
       }
