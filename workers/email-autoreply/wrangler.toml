@@ -1,0 +1,13 @@
+name = "smart-life-email-autoreply"
+main = "src/index.js"
+compatibility_date = "2025-01-01"
+
+[[kv_namespaces]]
+binding = "EMAIL_CONFIGS"
+id = "1b794c95417e4f7c949d7c3856aec6d1"
+
+[vars]
+FIREBASE_PROJECT_ID = "lifeos-b7205"
+
+# Secrets — set with: wrangler secret put <NAME>
+# GEMINI_API_KEY   (fallback key used when user has no key stored)

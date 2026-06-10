@@ -1,10 +1,72 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Send, Bot, Sparkles } from "lucide-react";
+import { Send, Bot, Sparkles, ChefHat, CheckSquare, Loader2 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
-import { invokeGemini } from "@/services/geminiService";
-import { getOrCreateUser } from "@/lib/firestoreService";
+import { invokeGeminiAgent, invokeGemini } from "@/services/geminiService";
+import { getOrCreateUser, recipesService, tasksService } from "@/lib/firestoreService";
 import { useCurrentUid } from "@/hooks/useCurrentUid";
+import { toast } from "sonner";
+
+const SYSTEM_PROMPT = `You are a Smart Life Agent — an AI personal assistant embedded in the Smart Life app.
+You can manage the user's recipes, tasks, and more using the available tools.
+When a user asks you to find, generate, or suggest a recipe, call find_recipe to create it, then present it nicely and ask if they'd like to save it. If they say yes, call save_recipe.
+Be helpful, concise, and proactive. Use markdown for formatting when appropriate.`;
+
+const AGENT_TOOLS = [
+  {
+    name: 'find_recipe',
+    description: 'Generate a complete recipe for a dish. Use when the user asks to find, create, or suggest a recipe.',
+    parameters: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: 'Dish name or description, e.g. "spaghetti carbonara" or "quick vegetarian stir fry"' },
+      },
+      required: ['query'],
+    },
+  },
+  {
+    name: 'save_recipe',
+    description: "Save a recipe to the user's recipe collection in the app.",
+    parameters: {
+      type: 'object',
+      properties: {
+        title: { type: 'string', description: 'Recipe name' },
+        ingredients: { type: 'array', items: { type: 'string' }, description: 'List of ingredients with quantities' },
+        instructions: { type: 'string', description: 'Step-by-step cooking instructions' },
+      },
+      required: ['title', 'ingredients', 'instructions'],
+    },
+  },
+  {
+    name: 'list_recipes',
+    description: "List all recipes the user has saved in the app.",
+    parameters: { type: 'object', properties: {} },
+  },
+  {
+    name: 'create_task',
+    description: 'Create a new task for the user.',
+    parameters: {
+      type: 'object',
+      properties: {
+        title: { type: 'string', description: 'Task title' },
+        description: { type: 'string', description: 'Optional details about the task' },
+      },
+      required: ['title'],
+    },
+  },
+  {
+    name: 'list_tasks',
+    description: "List the user's current pending tasks.",
+    parameters: { type: 'object', properties: {} },
+  },
+];
+
+const SUGGESTIONS = [
+  "Find me a recipe for chicken tikka masala",
+  "What tasks do I have pending?",
+  "Add a task to buy groceries",
+  "Show me my saved recipes",
+];
 
 function MessageBubble({ message }) {
   const isUser = message.role === "user";
@@ -47,21 +109,28 @@ function MessageBubble({ message }) {
   );
 }
 
-function TypingIndicator() {
+function TypingIndicator({ status }) {
   return (
     <div className="flex gap-3 justify-start">
       <div className="w-7 h-7 rounded-lg bg-accent/20 border border-accent/30 flex items-center justify-center shrink-0">
         <Bot className="w-3.5 h-3.5 text-accent" />
       </div>
-      <div className="bg-card border border-border rounded-2xl rounded-bl-sm px-4 py-3 flex gap-1.5 items-center">
-        {[0, 1, 2].map((i) => (
-          <motion.div
-            key={i}
-            className="w-1.5 h-1.5 rounded-full bg-accent/60"
-            animate={{ y: [0, -4, 0] }}
-            transition={{ duration: 0.6, repeat: Infinity, delay: i * 0.15 }}
-          />
-        ))}
+      <div className="bg-card border border-border rounded-2xl rounded-bl-sm px-4 py-3 flex gap-2 items-center">
+        {status ? (
+          <>
+            <Loader2 className="w-3.5 h-3.5 text-accent animate-spin" />
+            <span className="text-xs text-muted-foreground">{status}</span>
+          </>
+        ) : (
+          [0, 1, 2].map((i) => (
+            <motion.div
+              key={i}
+              className="w-1.5 h-1.5 rounded-full bg-accent/60"
+              animate={{ y: [0, -4, 0] }}
+              transition={{ duration: 0.6, repeat: Infinity, delay: i * 0.15 }}
+            />
+          ))
+        )}
       </div>
     </div>
   );
@@ -73,6 +142,7 @@ export default function SmartAgent() {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [toolStatus, setToolStatus] = useState("");
   const bottomRef = useRef(null);
   const inputRef = useRef(null);
 
@@ -87,35 +157,116 @@ export default function SmartAgent() {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, loading]);
 
-  const send = async () => {
-    const text = input.trim();
+  const executeToolCall = useCallback(async (name, args) => {
+    switch (name) {
+      case 'find_recipe': {
+        setToolStatus(`Generating recipe for "${args.query}"...`);
+        const recipe = await invokeGemini(
+          `Generate a complete, detailed recipe for: ${args.query}. Include exact quantities in ingredients.`,
+          {
+            type: 'object',
+            properties: {
+              title: { type: 'string' },
+              ingredients: { type: 'array', items: { type: 'string' } },
+              instructions: { type: 'string' },
+            },
+            required: ['title', 'ingredients', 'instructions'],
+          },
+          uid,
+          userApiKey
+        );
+        return recipe;
+      }
+      case 'save_recipe': {
+        setToolStatus(`Saving "${args.title}"...`);
+        await recipesService.create(uid, {
+          title: args.title,
+          ingredients: args.ingredients,
+          instructions: args.instructions,
+        });
+        toast.success(`Recipe "${args.title}" saved!`);
+        return { success: true, message: `Recipe "${args.title}" has been saved to your Recipes.` };
+      }
+      case 'list_recipes': {
+        setToolStatus('Loading your recipes...');
+        const recipes = await recipesService.list(uid);
+        if (!recipes.length) return { recipes: [], message: 'No saved recipes yet.' };
+        return { recipes: recipes.map(r => ({ id: r.id, title: r.title })) };
+      }
+      case 'create_task': {
+        setToolStatus(`Creating task "${args.title}"...`);
+        await tasksService.create(uid, {
+          title: args.title,
+          description: args.description || '',
+          status: 'pending',
+        });
+        toast.success(`Task "${args.title}" created!`);
+        return { success: true, message: `Task "${args.title}" has been created.` };
+      }
+      case 'list_tasks': {
+        setToolStatus('Loading your tasks...');
+        const tasks = await tasksService.list(uid);
+        const pending = tasks.filter(t => t.status !== 'done' && t.status !== 'completed');
+        return { tasks: pending.map(t => ({ id: t.id, title: t.title })) };
+      }
+      default:
+        return { error: `Unknown tool: ${name}` };
+    }
+  }, [uid, userApiKey]);
+
+  const send = async (overrideText) => {
+    const text = (overrideText ?? input).trim();
     if (!text || loading) return;
     setInput("");
-    const newMessages = [...messages, { role: "user", content: text }];
-    setMessages(newMessages);
+    const userMsg = { role: "user", content: text };
+    const nextMessages = [...messages, userMsg];
+    setMessages(nextMessages);
     setLoading(true);
+    setToolStatus("");
 
     try {
-      const history = newMessages
-        .slice(-12)
-        .map((m) => `${m.role}: ${m.content}`)
-        .join("\n");
+      // Convert UI message history to Gemini multi-turn format
+      let agentContents = nextMessages.slice(-10).map((m) => ({
+        role: m.role === "assistant" ? "model" : "user",
+        parts: [{ text: m.content }],
+      }));
 
-      const prompt = `You are a Smart Life Agent — an AI personal assistant that helps users manage their notes, tasks, schedule, and life.
+      // Agentic loop — runs until the model returns text (no more tool calls)
+      for (let step = 0; step < 6; step++) {
+        setToolStatus(step === 0 ? "" : toolStatus);
+        const modelContent = await invokeGeminiAgent(agentContents, AGENT_TOOLS, SYSTEM_PROMPT, uid, userApiKey);
+        if (!modelContent) throw new Error("Empty response from agent");
 
-Conversation history:
-${history}
+        const parts = modelContent.parts || [];
+        const functionCalls = parts.filter((p) => p.functionCall);
+        const textPart = parts.find((p) => p.text);
 
-Respond as the assistant. Be helpful, concise, and proactive. Use markdown for formatting when appropriate.`;
+        if (functionCalls.length === 0) {
+          setMessages((prev) => [...prev, { role: "assistant", content: textPart?.text || "" }]);
+          break;
+        }
 
-      const response = await invokeGemini(prompt, null, uid, userApiKey);
-      const content = typeof response === "string" ? response : (response?.text || response?.response || JSON.stringify(response));
-      setMessages((prev) => [...prev, { role: "assistant", content }]);
+        // Append model turn (with function calls) to context
+        agentContents = [...agentContents, { role: "model", parts }];
+
+        // Execute all tool calls and collect results
+        const toolResultParts = [];
+        for (const part of functionCalls) {
+          const { name, args } = part.functionCall;
+          const result = await executeToolCall(name, args);
+          toolResultParts.push({ functionResponse: { name, response: result } });
+        }
+        setToolStatus("");
+
+        // Append tool results as user turn
+        agentContents = [...agentContents, { role: "user", parts: toolResultParts }];
+      }
     } catch (err) {
-      console.error('SmartAgent error:', err);
-      setMessages((prev) => [...prev, { role: "assistant", content: `Error: ${err?.message || 'Unknown error'}` }]);
+      console.error("SmartAgent error:", err);
+      setMessages((prev) => [...prev, { role: "assistant", content: `Error: ${err?.message || "Unknown error"}` }]);
     } finally {
       setLoading(false);
+      setToolStatus("");
     }
   };
 
@@ -156,19 +307,20 @@ Respond as the assistant. Be helpful, concise, and proactive. Use markdown for f
             </div>
             <div>
               <p className="font-heading font-semibold text-foreground mb-1">How can I help you today?</p>
-              <p className="text-sm text-muted-foreground">Ask me to manage your tasks, notes, schedule plans, or anything about your life.</p>
+              <p className="text-sm text-muted-foreground">I can find recipes, save them, manage your tasks, and more.</p>
             </div>
             <div className="flex flex-col gap-2 w-full mt-2">
-              {[
-                "Summarize my recent notes",
-                "What tasks are pending?",
-                "Add a reminder to call John",
-              ].map((s) => (
+              {SUGGESTIONS.map((s) => (
                 <button
                   key={s}
-                  onClick={() => { setInput(s); inputRef.current?.focus(); }}
-                  className="text-sm text-left px-4 py-2.5 rounded-xl border border-border bg-card hover:border-accent/40 hover:bg-accent/5 transition-all text-muted-foreground"
+                  onClick={() => send(s)}
+                  className="text-sm text-left px-4 py-2.5 rounded-xl border border-border bg-card hover:border-accent/40 hover:bg-accent/5 transition-all text-muted-foreground flex items-center gap-2"
                 >
+                  {s.toLowerCase().includes("recipe") ? (
+                    <ChefHat className="w-3.5 h-3.5 shrink-0 text-accent/60" />
+                  ) : (
+                    <CheckSquare className="w-3.5 h-3.5 shrink-0 text-accent/60" />
+                  )}
                   {s}
                 </button>
               ))}
@@ -179,13 +331,16 @@ Respond as the assistant. Be helpful, concise, and proactive. Use markdown for f
             {messages.map((msg, i) => (
               <MessageBubble key={i} message={msg} />
             ))}
-            {loading && <TypingIndicator />}
+            {loading && <TypingIndicator status={toolStatus} />}
           </AnimatePresence>
         )}
         <div ref={bottomRef} />
       </div>
 
-      <div className="shrink-0 px-4 pb-24 pt-3 border-t border-border/50 glass" style={{ paddingBottom: 'max(6rem, calc(5rem + env(safe-area-inset-bottom)))' }}>
+      <div
+        className="shrink-0 px-4 pt-3 border-t border-border/50 glass"
+        style={{ paddingBottom: 'max(6rem, calc(5rem + env(safe-area-inset-bottom)))' }}
+      >
         <div className="flex gap-2 items-end">
           <textarea
             ref={inputRef}
@@ -198,7 +353,7 @@ Respond as the assistant. Be helpful, concise, and proactive. Use markdown for f
             style={{ minHeight: 44 }}
           />
           <button
-            onClick={send}
+            onClick={() => send()}
             disabled={!input.trim() || loading}
             className="w-11 h-11 rounded-2xl bg-accent flex items-center justify-center shrink-0 disabled:opacity-40 hover:bg-accent/80 transition-colors"
           >

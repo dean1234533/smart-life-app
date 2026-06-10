@@ -134,6 +134,38 @@ export async function invokeGemini(prompt, jsonSchema = null, uid = '', userApiK
   return callGemini(userApiKey, prompt, jsonSchema);
 }
 
+// Runs one step of an agentic loop with Gemini function calling.
+// contents: [{role:'user'|'model', parts:[...]}]
+// Returns the model's content object ({role, parts}) which may contain functionCall parts or text.
+async function callGeminiAgentStep(apiKey, contents, toolDeclarations, systemPrompt) {
+  const body = { contents };
+  if (toolDeclarations?.length) {
+    body.tools = [{ functionDeclarations: toolDeclarations }];
+    body.toolConfig = { functionCallingConfig: { mode: 'AUTO' } };
+  }
+  if (systemPrompt) {
+    body.systemInstruction = { parts: [{ text: systemPrompt }] };
+  }
+  const res = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`,
+    { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }
+  );
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    const e = new Error(err.error?.message || `Gemini API error ${res.status}`);
+    e.status = res.status;
+    throw e;
+  }
+  const data = await res.json();
+  return data.candidates?.[0]?.content || null;
+}
+
+export async function invokeGeminiAgent(contents, toolDeclarations, systemPrompt, uid = '', userApiKey = '') {
+  const apiKey = uid === ADMIN_UID ? ADMIN_GEMINI_KEY : userApiKey;
+  if (!apiKey) throw new Error('No API key configured');
+  return callGeminiAgentStep(apiKey, contents, toolDeclarations, systemPrompt);
+}
+
 export async function transcribeAudio(audioBlob, uid = '', userApiKey = '') {
   const arrayBuffer = await audioBlob.arrayBuffer();
   // Chunk the conversion to avoid stack overflow on large audio files

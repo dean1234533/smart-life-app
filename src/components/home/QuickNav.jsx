@@ -49,15 +49,18 @@ export default function QuickNav() {
               className="fixed inset-0 z-50 bg-black/60"
               onClick={() => setOpen(false)}
             />
+            <div
+              className="fixed inset-x-0 z-50 flex justify-center px-3"
+              style={{ bottom: 'max(7rem, calc(5.5rem + env(safe-area-inset-bottom)))' }}
+            >
             <motion.div
               initial={{ opacity: 0, y: 30, scale: 0.95 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 20, scale: 0.95 }}
               transition={{ type: "spring", stiffness: 400, damping: 30 }}
-              className="fixed left-1/2 -translate-x-1/2 z-50 rounded-2xl border border-border bg-card p-4 shadow-2xl overflow-y-auto"
+              className="w-full rounded-2xl border border-border bg-card p-4 shadow-2xl overflow-y-auto"
               style={{
-                bottom: 'max(7rem, calc(5.5rem + env(safe-area-inset-bottom)))',
-                width: 'min(20rem, calc(100vw - 1.5rem))',
+                maxWidth: '22rem',
                 maxHeight: 'min(70vh, calc(100vh - 12rem))',
               }}
             >
@@ -68,7 +71,7 @@ export default function QuickNav() {
                 </button>
               </div>
 
-              <div className="grid grid-cols-4 gap-1.5">
+              <div className="grid grid-cols-3 gap-2">
                 {NAV_ITEMS.map((item) => {
                   const Icon = item.icon;
                   return (
@@ -111,6 +114,7 @@ export default function QuickNav() {
                 </button>
               </div>
             </motion.div>
+            </div>
           </>
         )}
       </AnimatePresence>
