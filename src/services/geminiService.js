@@ -1,7 +1,7 @@
 const ADMIN_UID = import.meta.env.VITE_ADMIN_UID || '';
-const ADMIN_GEMINI_KEY = import.meta.env.VITE_ADMIN_GEMINI_KEY;
-const ADMIN_CEREBRAS_KEY = import.meta.env.VITE_ADMIN_CEREBRAS_KEY;
-const ADMIN_GROQ_KEY = import.meta.env.VITE_ADMIN_GROQ_KEY;
+const ADMIN_GEMINI_KEY = import.meta.env.VITE_GEMINI_API_KEY;
+const ADMIN_CEREBRAS_KEY = import.meta.env.VITE_CEREBRAS_API_KEY;
+const ADMIN_GROQ_KEY = import.meta.env.VITE_GROQ_API_KEY;
 
 const GEMINI_MODEL = 'gemini-1.5-flash';
 const CEREBRAS_MODEL = 'llama-3.3-70b';
