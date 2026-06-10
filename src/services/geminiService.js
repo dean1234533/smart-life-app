@@ -96,15 +96,19 @@ async function transcribeWithGroq(apiKey, audioBlob) {
   return data.text || '';
 }
 
+function shouldFallthrough(err) {
+  return !err.status || err.status === 400 || err.status === 401 || err.status === 403 || err.status >= 429;
+}
+
 async function withAdminFallback(geminiFn, cerebrasFn, groqFn) {
   if (ADMIN_GEMINI_KEY) {
     try { return await geminiFn(); } catch (err) {
-      if (err.status !== 429 && err.status !== 503) throw err;
+      if (!shouldFallthrough(err)) throw err;
     }
   }
   if (ADMIN_CEREBRAS_KEY) {
     try { return await cerebrasFn(); } catch (err) {
-      if (err.status !== 429 && err.status !== 503) throw err;
+      if (!shouldFallthrough(err)) throw err;
     }
   }
   if (ADMIN_GROQ_KEY) {
