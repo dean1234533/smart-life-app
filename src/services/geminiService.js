@@ -4,7 +4,7 @@ const ADMIN_CEREBRAS_KEY = import.meta.env.VITE_CEREBRAS_API_KEY;
 const ADMIN_GROQ_KEY = import.meta.env.VITE_GROQ_API_KEY;
 
 const GEMINI_MODEL = 'gemini-2.0-flash';
-const CEREBRAS_MODEL = 'llama-3.3-70b';
+const CEREBRAS_MODEL = 'llama3.3-70b';
 const GROQ_MODEL = 'llama-3.3-70b-versatile';
 
 async function callGemini(apiKey, prompt, jsonSchema = null, parts = null) {
