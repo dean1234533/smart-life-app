@@ -129,11 +129,17 @@ export default function Settings() {
 
   return (
     <div className="px-4 pt-12 pb-6">
-      <div className="flex items-center gap-3 mb-8">
-        <button onClick={() => navigate("/")} className="text-muted-foreground hover:text-foreground">
-          <ArrowLeft className="w-5 h-5" />
+      <div className="flex items-center justify-between mb-8">
+        <div className="flex items-center gap-3">
+          <button onClick={() => navigate("/")} className="text-muted-foreground hover:text-foreground">
+            <ArrowLeft className="w-5 h-5" />
+          </button>
+          <h1 className="text-2xl font-display font-bold">Settings</h1>
+        </div>
+        <button onClick={handleSignOut}
+          className="flex items-center gap-1.5 text-sm text-destructive hover:text-destructive/80 transition-colors">
+          <LogOut className="w-4 h-4" />Sign out
         </button>
-        <h1 className="text-2xl font-display font-bold">Settings</h1>
       </div>
 
       <div className="space-y-5">

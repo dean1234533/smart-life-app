@@ -1,5 +1,5 @@
 import { Link, useLocation } from "react-router-dom";
-import { Home, StickyNote, Mic, Clock, Sparkles } from "lucide-react";
+import { Home, StickyNote, Mic, Clock, Sparkles, Settings } from "lucide-react";
 import { motion } from "framer-motion";
 
 const navItems = [
@@ -8,6 +8,7 @@ const navItems = [
   { path: "/recordings", icon: Mic, label: "Record" },
   { path: "/timeline", icon: Clock, label: "Timeline" },
   { path: "/agent", icon: Sparkles, label: "Agent" },
+  { path: "/settings", icon: Settings, label: "Settings" },
 ];
 
 export default function BottomNav() {
