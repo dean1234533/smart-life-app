@@ -1,18 +1,29 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { LayoutGrid, X, FileText, Mic, Calendar, CheckSquare, Clock, Bot, Home, Share2, Settings } from "lucide-react";
+import {
+  LayoutGrid, X, FileText, Mic, Calendar, CheckSquare, Clock, Bot,
+  Home, Share2, ShoppingCart, Users, DollarSign, ChefHat,
+  MessageSquare, UserCog, BookOpen, Link as LinkIcon
+} from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
 
 const NAV_ITEMS = [
-  { label: "Home", icon: Home, path: "/" },
-  { label: "Notes", icon: FileText, path: "/notes" },
-  { label: "Tasks", icon: CheckSquare, path: "/tasks" },
-  { label: "Calendar", icon: Calendar, path: "/calendar" },
-  { label: "Recordings", icon: Mic, path: "/recordings" },
-  { label: "Timeline", icon: Clock, path: "/timeline" },
-  { label: "Availability", icon: Settings, path: "/availability" },
-  { label: "Agent", icon: Bot, path: "/agent" },
+  { label: "Home",       icon: Home,          path: "/" },
+  { label: "Notes",      icon: FileText,       path: "/notes" },
+  { label: "Tasks",      icon: CheckSquare,    path: "/tasks" },
+  { label: "Calendar",   icon: Calendar,       path: "/calendar" },
+  { label: "Recordings", icon: Mic,            path: "/recordings" },
+  { label: "Timeline",   icon: Clock,          path: "/timeline" },
+  { label: "Agent",      icon: Bot,            path: "/agent" },
+  { label: "Shopping",   icon: ShoppingCart,   path: "/shopping" },
+  { label: "Contacts",   icon: Users,          path: "/contacts" },
+  { label: "Expenses",   icon: DollarSign,     path: "/expenses" },
+  { label: "Recipes",    icon: ChefHat,        path: "/recipes" },
+  { label: "Meetings",   icon: MessageSquare,  path: "/meetings" },
+  { label: "Follow-ups", icon: BookOpen,       path: "/follow-ups" },
+  { label: "Availability", icon: UserCog,      path: "/availability" },
+  { label: "Booking",    icon: LinkIcon,       path: "/booking-links" },
 ];
 
 export default function QuickNav() {
@@ -43,7 +54,7 @@ export default function QuickNav() {
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 20, scale: 0.95 }}
               transition={{ type: "spring", stiffness: 400, damping: 30 }}
-              className="fixed bottom-28 left-1/2 -translate-x-1/2 z-50 w-72 rounded-2xl border border-border bg-card p-5 shadow-2xl"
+              className="fixed bottom-28 left-1/2 -translate-x-1/2 z-50 w-80 rounded-2xl border border-border bg-card p-5 shadow-2xl max-h-[70vh] overflow-y-auto"
             >
               <div className="flex items-center justify-between mb-4">
                 <span className="font-heading font-semibold text-sm">Go to...</span>
@@ -74,7 +85,6 @@ export default function QuickNav() {
                       await navigator.clipboard.writeText(url);
                       toast.success("Booking link copied!");
                     } catch {
-                      // fallback: select a temp input
                       const el = document.createElement("input");
                       el.value = url;
                       document.body.appendChild(el);

@@ -1,20 +1,53 @@
 const GOOGLE_AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
 const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token';
 const GOOGLE_CAL_URL = 'https://www.googleapis.com/calendar/v3/calendars/primary/events';
-const FIREBASE_LOOKUP_URL = 'https://identitytoolkit.googleapis.com/v1/accounts:lookup';
+const FIREBASE_JWKS_URL = 'https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com';
 
-// Verify Firebase ID token and return UID
-async function getUidFromToken(idToken, firebaseApiKey) {
-  const resp = await fetch(`${FIREBASE_LOOKUP_URL}?key=${firebaseApiKey}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ idToken }),
-  });
-  if (!resp.ok) throw new Error('Invalid Firebase token');
-  const data = await resp.json();
-  const uid = data.users?.[0]?.localId;
-  if (!uid) throw new Error('Token has no UID');
-  return uid;
+function b64urlDecode(str) {
+  const padded = str.replace(/-/g, '+').replace(/_/g, '/');
+  const pad = (4 - padded.length % 4) % 4;
+  const b64 = padded + '='.repeat(pad);
+  return atob(b64);
+}
+
+// Verify Firebase ID token using Google's public JWK — no API key needed
+async function verifyFirebaseToken(idToken, projectId) {
+  const parts = idToken.split('.');
+  if (parts.length !== 3) throw new Error('Invalid Firebase token format');
+
+  let header, payload;
+  try {
+    header = JSON.parse(b64urlDecode(parts[0]));
+    payload = JSON.parse(b64urlDecode(parts[1]));
+  } catch {
+    throw new Error('Invalid Firebase token: malformed JWT');
+  }
+
+  if (payload.aud !== projectId) throw new Error('Invalid Firebase token: wrong audience');
+  if (payload.iss !== `https://securetoken.google.com/${projectId}`) throw new Error('Invalid Firebase token: wrong issuer');
+  if (Math.floor(Date.now() / 1000) > payload.exp) throw new Error('Firebase token expired');
+
+  // Fetch Google's public signing keys (cached for 1 hour by Cloudflare CDN)
+  const keysResp = await fetch(FIREBASE_JWKS_URL, { cf: { cacheTtl: 3600 } });
+  if (!keysResp.ok) throw new Error('Failed to fetch Firebase public keys');
+  const { keys } = await keysResp.json();
+
+  const jwk = keys.find((k) => k.kid === header.kid);
+  if (!jwk) throw new Error('Invalid Firebase token: unknown signing key');
+
+  const cryptoKey = await crypto.subtle.importKey(
+    'jwk', jwk,
+    { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' },
+    false, ['verify']
+  );
+
+  const signingInput = new TextEncoder().encode(`${parts[0]}.${parts[1]}`);
+  const sigBytes = Uint8Array.from(b64urlDecode(parts[2]), (c) => c.charCodeAt(0));
+
+  const valid = await crypto.subtle.verify('RSASSA-PKCS1-v1_5', cryptoKey, sigBytes, signingInput);
+  if (!valid) throw new Error('Invalid Firebase token: signature mismatch');
+
+  return payload.sub; // UID
 }
 
 // Get or refresh a valid Google access token for a user
@@ -75,6 +108,7 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
     const path = url.pathname;
+    const projectId = env.FIREBASE_PROJECT_ID || 'lifeos-b7205';
 
     // Preflight
     if (request.method === 'OPTIONS') {
@@ -83,12 +117,11 @@ export default {
 
     try {
       // ── Step 1: Start OAuth flow ────────────────────────────────────────
-      // Frontend sends user's Firebase ID token; we verify and start the redirect
       if (path === '/auth/google/start' && request.method === 'GET') {
         const idToken = url.searchParams.get('idToken');
         if (!idToken) return json({ error: 'Missing idToken' }, 400, env);
 
-        const uid = await getUidFromToken(idToken, env.FIREBASE_API_KEY);
+        const uid = await verifyFirebaseToken(idToken, projectId);
         const redirectUri = `${url.origin}/auth/google/callback`;
 
         const params = new URLSearchParams({
@@ -145,21 +178,21 @@ export default {
 
       // ── Check connection status ─────────────────────────────────────────
       if (path === '/calendar/status' && request.method === 'GET') {
-        const uid = await getUidFromToken(extractIdToken(request), env.FIREBASE_API_KEY);
+        const uid = await verifyFirebaseToken(extractIdToken(request), projectId);
         const stored = await env.GOOGLE_TOKENS.get(uid, 'json');
         return json({ connected: !!stored?.refreshToken }, 200, env);
       }
 
       // ── Disconnect ──────────────────────────────────────────────────────
       if (path === '/calendar/disconnect' && request.method === 'DELETE') {
-        const uid = await getUidFromToken(extractIdToken(request), env.FIREBASE_API_KEY);
+        const uid = await verifyFirebaseToken(extractIdToken(request), projectId);
         await env.GOOGLE_TOKENS.delete(uid);
         return json({ success: true }, 200, env);
       }
 
       // ── Fetch events ────────────────────────────────────────────────────
       if (path === '/calendar/events' && request.method === 'GET') {
-        const uid = await getUidFromToken(extractIdToken(request), env.FIREBASE_API_KEY);
+        const uid = await verifyFirebaseToken(extractIdToken(request), projectId);
         const token = await getAccessToken(uid, env);
 
         const timeMin = url.searchParams.get('timeMin') || new Date().toISOString();
@@ -176,7 +209,7 @@ export default {
 
       // ── Create event ────────────────────────────────────────────────────
       if (path === '/calendar/events' && request.method === 'POST') {
-        const uid = await getUidFromToken(extractIdToken(request), env.FIREBASE_API_KEY);
+        const uid = await verifyFirebaseToken(extractIdToken(request), projectId);
         const token = await getAccessToken(uid, env);
         const body = await request.json();
 

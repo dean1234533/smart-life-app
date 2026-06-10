@@ -199,6 +199,142 @@ function BubblesBackground() {
   );
 }
 
+// ── Neon Grid ────────────────────────────────────────────────────────────
+function NeonGridBackground() {
+  return (
+    <div style={{ position: 'absolute', inset: 0, overflow: 'hidden' }}>
+      <div className="neon-grid" />
+      <div style={{
+        position: 'absolute', inset: 0,
+        background: 'radial-gradient(ellipse at 50% 50%, rgba(168,85,247,0.12) 0%, transparent 70%)',
+        animation: 'neonPulse 4s ease-in-out infinite',
+      }} />
+    </div>
+  );
+}
+
+// ── Galaxy ────────────────────────────────────────────────────────────────
+function GalaxyBackground() {
+  const canvasRef = useRef(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    let raf;
+    let angle = 0;
+
+    const resize = () => { canvas.width = canvas.offsetWidth; canvas.height = canvas.offsetHeight; };
+    resize();
+    window.addEventListener('resize', resize);
+
+    const stars = Array.from({ length: 200 }, () => {
+      const r = Math.random() * Math.min(canvas.width, canvas.height) * 0.45;
+      const a = Math.random() * Math.PI * 2;
+      return {
+        r, baseA: a,
+        speed: (0.0002 + Math.random() * 0.0003) * (Math.random() < 0.5 ? 1 : -1),
+        size: Math.random() * 1.5 + 0.3,
+        opacity: 0.3 + Math.random() * 0.7,
+        color: Math.random() < 0.3 ? '#a78bfa' : Math.random() < 0.5 ? '#60a5fa' : '#fff',
+      };
+    });
+
+    const draw = () => {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      const cx = canvas.width / 2, cy = canvas.height / 2;
+      angle += 0.0003;
+      for (const s of stars) {
+        const a = s.baseA + angle * (s.r / 200);
+        const x = cx + Math.cos(a) * s.r;
+        const y = cy + Math.sin(a) * s.r * 0.4;
+        ctx.beginPath();
+        ctx.arc(x, y, s.size, 0, Math.PI * 2);
+        ctx.fillStyle = s.color;
+        ctx.globalAlpha = s.opacity;
+        ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+      const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, 80);
+      grad.addColorStop(0, 'rgba(139,92,246,0.15)');
+      grad.addColorStop(1, 'transparent');
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.ellipse(cx, cy, 80, 32, 0, 0, Math.PI * 2);
+      ctx.fill();
+      raf = requestAnimationFrame(draw);
+    };
+    draw();
+    return () => { cancelAnimationFrame(raf); window.removeEventListener('resize', resize); };
+  }, []);
+
+  return <canvas ref={canvasRef} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }} />;
+}
+
+// ── Rain ──────────────────────────────────────────────────────────────────
+function RainBackground() {
+  const canvasRef = useRef(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    let raf;
+
+    const resize = () => { canvas.width = canvas.offsetWidth; canvas.height = canvas.offsetHeight; };
+    resize();
+    window.addEventListener('resize', resize);
+
+    const drops = Array.from({ length: 120 }, () => ({
+      x: Math.random() * canvas.width,
+      y: Math.random() * canvas.height,
+      len: 10 + Math.random() * 20,
+      speed: 4 + Math.random() * 6,
+      opacity: 0.1 + Math.random() * 0.4,
+    }));
+
+    const draw = () => {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      for (const d of drops) {
+        ctx.beginPath();
+        ctx.moveTo(d.x, d.y);
+        ctx.lineTo(d.x - 1, d.y + d.len);
+        ctx.strokeStyle = `rgba(96,165,250,${d.opacity})`;
+        ctx.lineWidth = 1;
+        ctx.stroke();
+        d.y += d.speed;
+        if (d.y > canvas.height + d.len) {
+          d.y = -d.len;
+          d.x = Math.random() * canvas.width;
+        }
+      }
+      raf = requestAnimationFrame(draw);
+    };
+    draw();
+    return () => { cancelAnimationFrame(raf); window.removeEventListener('resize', resize); };
+  }, []);
+
+  return (
+    <div style={{ position: 'absolute', inset: 0, overflow: 'hidden' }}>
+      <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, #060b14 0%, #0a1628 100%)' }} />
+      <canvas ref={canvasRef} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }} />
+    </div>
+  );
+}
+
+// ── Gradient Mesh ─────────────────────────────────────────────────────────
+function GradientBackground() {
+  return (
+    <div style={{ position: 'absolute', inset: 0, overflow: 'hidden' }}>
+      <div className="gradient-blob gradient-b1" />
+      <div className="gradient-blob gradient-b2" />
+      <div className="gradient-blob gradient-b3" />
+      <div className="gradient-blob gradient-b4" />
+      <div style={{ position: 'absolute', inset: 0, backdropFilter: 'blur(80px)' }} />
+    </div>
+  );
+}
+
 export const BACKGROUNDS = [
   { id: 'hexagons', label: 'Hexagons', preview: 'linear-gradient(135deg, #0d1520 60%, #22d3ee22)' },
   { id: 'aurora',   label: 'Aurora',   preview: 'linear-gradient(135deg, #1e0a3c, #0e1a3a, #7c3aed44)' },
@@ -207,16 +343,24 @@ export const BACKGROUNDS = [
   { id: 'stars',    label: 'Stars',    preview: 'linear-gradient(180deg, #06051a, #12103a)' },
   { id: 'waves',    label: 'Waves',    preview: 'linear-gradient(180deg, #0d1520, #0a1929)' },
   { id: 'bubbles',  label: 'Bubbles',  preview: 'linear-gradient(135deg, #0d1520, #0d2030)' },
+  { id: 'neon',     label: 'Neon Grid',preview: 'linear-gradient(135deg, #0a0014, #1a0030)' },
+  { id: 'galaxy',   label: 'Galaxy',   preview: 'radial-gradient(ellipse at 50% 50%, #2d1b69, #0a0618)' },
+  { id: 'rain',     label: 'Rain',     preview: 'linear-gradient(180deg, #060b14, #0a1628)' },
+  { id: 'gradient', label: 'Gradient', preview: 'linear-gradient(135deg, #1a0033, #001a33, #003322)' },
 ];
 
 export default function AnimatedBackground({ type = 'hexagons' }) {
   switch (type) {
-    case 'aurora': return <AuroraBackground />;
+    case 'aurora':    return <AuroraBackground />;
     case 'particles': return <ParticleBackground />;
-    case 'matrix': return <MatrixBackground />;
-    case 'stars': return <StarsBackground />;
-    case 'waves': return <WavesBackground />;
-    case 'bubbles': return <BubblesBackground />;
-    default: return <HexBackground />;
+    case 'matrix':    return <MatrixBackground />;
+    case 'stars':     return <StarsBackground />;
+    case 'waves':     return <WavesBackground />;
+    case 'bubbles':   return <BubblesBackground />;
+    case 'neon':      return <NeonGridBackground />;
+    case 'galaxy':    return <GalaxyBackground />;
+    case 'rain':      return <RainBackground />;
+    case 'gradient':  return <GradientBackground />;
+    default:          return <HexBackground />;
   }
 }

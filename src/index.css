@@ -223,3 +223,37 @@
   90% { opacity: 0.6; }
   100% { transform: translateY(-110vh) scale(1.2); opacity: 0; }
 }
+
+/* ── Neon Grid background ────────────────────────────────────────────── */
+.neon-grid {
+  position: absolute; inset: 0;
+  background-image:
+    linear-gradient(rgba(168,85,247,0.15) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(168,85,247,0.15) 1px, transparent 1px);
+  background-size: 40px 40px;
+  animation: neonGridScroll 20s linear infinite;
+}
+@keyframes neonGridScroll {
+  0% { background-position: 0 0; }
+  100% { background-position: 0 40px; }
+}
+@keyframes neonPulse {
+  0%, 100% { opacity: 0.6; }
+  50% { opacity: 1; }
+}
+
+/* ── Gradient Mesh background ────────────────────────────────────────── */
+.gradient-blob {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(80px);
+  animation: gradientDrift ease-in-out infinite alternate;
+}
+.gradient-b1 { width: 60vw; height: 60vw; top: -20%; left: -10%; background: radial-gradient(circle, rgba(124,58,237,0.4), transparent 70%); animation-duration: 15s; }
+.gradient-b2 { width: 50vw; height: 50vw; top: 30%; right: -10%; background: radial-gradient(circle, rgba(16,185,129,0.35), transparent 70%); animation-duration: 18s; animation-delay: -5s; }
+.gradient-b3 { width: 55vw; height: 55vw; bottom: -10%; left: 20%; background: radial-gradient(circle, rgba(59,130,246,0.35), transparent 70%); animation-duration: 20s; animation-delay: -10s; }
+.gradient-b4 { width: 40vw; height: 40vw; top: 50%; right: 20%; background: radial-gradient(circle, rgba(236,72,153,0.3), transparent 70%); animation-duration: 12s; animation-delay: -3s; }
+@keyframes gradientDrift {
+  0% { transform: translate(0, 0) scale(1); }
+  100% { transform: translate(5vw, 5vh) scale(1.1); }
+}

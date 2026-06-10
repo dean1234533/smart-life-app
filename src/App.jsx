@@ -13,6 +13,7 @@ import ForgotPassword from '@/pages/ForgotPassword';
 import ResetPassword from '@/pages/ResetPassword';
 
 import AppLayout from '@/components/layout/AppLayout';
+import { UserPrefsProvider } from '@/contexts/UserPrefsContext';
 import Home from '@/pages/Home';
 import Notes from '@/pages/Notes';
 import NoteEditor from '@/pages/NoteEditor';
@@ -129,7 +130,9 @@ function App() {
     <AuthProvider>
       <QueryClientProvider client={queryClientInstance}>
         <Router>
-          <AuthenticatedApp />
+          <UserPrefsProvider>
+            <AuthenticatedApp />
+          </UserPrefsProvider>
         </Router>
         <Toaster />
       </QueryClientProvider>

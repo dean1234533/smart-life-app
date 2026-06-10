@@ -6,8 +6,11 @@ compatibility_date = "2025-01-01"
 binding = "GOOGLE_TOKENS"
 id = "c956ee48a242440794fc64c9ae019130"
 
+[vars]
+FIREBASE_PROJECT_ID = "lifeos-b7205"
+
 # Secrets — set with: wrangler secret put <NAME>
 # GOOGLE_CLIENT_ID
 # GOOGLE_CLIENT_SECRET
-# FIREBASE_API_KEY
 # APP_ORIGIN (e.g. https://smart-life-app.pages.dev)
+# Note: FIREBASE_API_KEY no longer needed — token verified via JWK
