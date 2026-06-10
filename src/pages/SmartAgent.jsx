@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Send, Bot, Sparkles, ChefHat, CheckSquare, Loader2 } from "lucide-react";
+import { Send, Bot, Sparkles, ChefHat, CheckSquare, Loader2, Mic, MicOff } from "lucide-react";
 import ReactMarkdown from "react-markdown";
-import { invokeGeminiAgent, invokeGemini } from "@/services/geminiService";
+import { invokeGeminiAgent, invokeGemini, transcribeAudio } from "@/services/geminiService";
 import { getOrCreateUser, recipesService, tasksService } from "@/lib/firestoreService";
 import { useCurrentUid } from "@/hooks/useCurrentUid";
 import { toast } from "sonner";
@@ -143,8 +143,12 @@ export default function SmartAgent() {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [toolStatus, setToolStatus] = useState("");
+  const [isRecording, setIsRecording] = useState(false);
+  const [isTranscribing, setIsTranscribing] = useState(false);
   const bottomRef = useRef(null);
   const inputRef = useRef(null);
+  const mediaRecorderRef = useRef(null);
+  const chunksRef = useRef([]);
 
   useEffect(() => {
     if (!uid) return;
@@ -213,6 +217,51 @@ export default function SmartAgent() {
         return { error: `Unknown tool: ${name}` };
     }
   }, [uid, userApiKey]);
+
+  const startRecording = async () => {
+    if (!navigator.mediaDevices?.getUserMedia) {
+      toast.error("Microphone not available. Try Safari or Chrome.");
+      return;
+    }
+    let stream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+    } catch (err) {
+      toast.error(err.name === 'NotAllowedError' ? "Microphone access denied — allow it in browser settings." : `Microphone error: ${err.message}`);
+      return;
+    }
+    const preferredTypes = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg;codecs=opus', 'audio/ogg'];
+    const mimeType = preferredTypes.find((t) => { try { return MediaRecorder.isTypeSupported(t); } catch { return false; } }) || '';
+    const recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
+    mediaRecorderRef.current = recorder;
+    chunksRef.current = [];
+    recorder.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data); };
+    recorder.onstop = async () => {
+      stream.getTracks().forEach((t) => t.stop());
+      const actualType = recorder.mimeType || mimeType || 'audio/webm';
+      const blob = new Blob(chunksRef.current, { type: actualType });
+      setIsTranscribing(true);
+      try {
+        const text = await transcribeAudio(blob, uid, userApiKey);
+        if (text?.trim()) {
+          send(text.trim());
+        } else {
+          toast.error("Couldn't hear anything — try again.");
+        }
+      } catch (err) {
+        toast.error(`Transcription failed: ${err.message}`);
+      } finally {
+        setIsTranscribing(false);
+      }
+    };
+    recorder.start(250);
+    setIsRecording(true);
+  };
+
+  const stopRecording = () => {
+    mediaRecorderRef.current?.stop();
+    setIsRecording(false);
+  };
 
   const send = async (overrideText) => {
     const text = (overrideText ?? input).trim();
@@ -347,11 +396,32 @@ export default function SmartAgent() {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKey}
-            placeholder="Ask your Smart Life Agent..."
+            placeholder={isRecording ? "Listening..." : isTranscribing ? "Transcribing..." : "Ask your Smart Life Agent..."}
             rows={1}
-            className="flex-1 resize-none rounded-2xl border border-border bg-muted/50 px-4 py-3 text-sm placeholder:text-muted-foreground focus:outline-none focus:border-accent/50 focus:ring-1 focus:ring-accent/30 transition-all max-h-32"
+            disabled={isRecording || isTranscribing}
+            className="flex-1 resize-none rounded-2xl border border-border bg-muted/50 px-4 py-3 text-sm placeholder:text-muted-foreground focus:outline-none focus:border-accent/50 focus:ring-1 focus:ring-accent/30 transition-all max-h-32 disabled:opacity-60"
             style={{ minHeight: 44 }}
           />
+
+          {/* Mic button — tap to start, tap again to stop */}
+          <button
+            onClick={isRecording ? stopRecording : startRecording}
+            disabled={loading || isTranscribing}
+            className={`w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 transition-all disabled:opacity-40 ${
+              isRecording
+                ? "bg-red-500 hover:bg-red-600 animate-pulse"
+                : "border border-border bg-muted/50 hover:bg-muted text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            {isTranscribing ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : isRecording ? (
+              <MicOff className="w-4 h-4 text-white" />
+            ) : (
+              <Mic className="w-4 h-4" />
+            )}
+          </button>
+
           <button
             onClick={() => send()}
             disabled={!input.trim() || loading}
