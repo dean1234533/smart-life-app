@@ -6,7 +6,6 @@ import {
   MessageSquare, UserCog, BookOpen, Link as LinkIcon
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
-import { toast } from "sonner";
 
 const NAV_ITEMS = [
   { label: "Home",       icon: Home,          path: "/" },
@@ -86,32 +85,14 @@ export default function QuickNav() {
                     </Link>
                   );
                 })}
-                <button
-                  onClick={async () => {
-                    const url = `${window.location.origin}/book`;
-                    let copied = false;
-                    // Try modern API first (must await BEFORE closing modal or page loses focus)
-                    if (navigator.clipboard && window.isSecureContext) {
-                      try { await navigator.clipboard.writeText(url); copied = true; } catch {}
-                    }
-                    // Fallback: textarea trick
-                    if (!copied) {
-                      const el = document.createElement("textarea");
-                      el.value = url;
-                      el.style.cssText = "position:fixed;left:-9999px;top:50%;opacity:1";
-                      document.body.appendChild(el);
-                      el.focus(); el.select();
-                      try { copied = document.execCommand("copy"); } catch {}
-                      el.remove();
-                    }
-                    toast[copied ? "success" : "info"](copied ? "Booking link copied!" : `Your link: ${url}`, { duration: copied ? 3000 : 8000 });
-                    setOpen(false);
-                  }}
+                <Link
+                  to="/booking-links"
+                  onClick={() => setOpen(false)}
                   className="flex flex-col items-center gap-1 p-2 rounded-xl bg-muted/50 hover:bg-accent/10 hover:text-accent transition-colors"
                 >
                   <Share2 className="w-5 h-5" />
                   <span className="text-[10px] font-medium text-center leading-tight">Share Link</span>
-                </button>
+                </Link>
               </div>
             </motion.div>
             </div>
