@@ -344,21 +344,84 @@ export default function SmartAgent() {
         </div>
       </div>
 
+      {/* Full-screen tap-to-stop overlay while recording */}
+      <AnimatePresence>
+        {isRecording && (
+          <motion.button
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={stopRecording}
+            className="fixed inset-0 z-40 flex flex-col items-center justify-center bg-black/70 backdrop-blur-sm"
+          >
+            <motion.div
+              animate={{ scale: [1, 1.12, 1] }}
+              transition={{ duration: 1.2, repeat: Infinity, ease: "easeInOut" }}
+              className="w-28 h-28 rounded-full bg-red-500/20 border-2 border-red-400 flex items-center justify-center mb-6"
+            >
+              <motion.div
+                animate={{ scale: [1, 1.15, 1] }}
+                transition={{ duration: 1.2, repeat: Infinity, ease: "easeInOut", delay: 0.1 }}
+                className="w-20 h-20 rounded-full bg-red-500/30 flex items-center justify-center"
+              >
+                <Mic className="w-9 h-9 text-red-400" />
+              </motion.div>
+            </motion.div>
+            <p className="text-white text-lg font-semibold mb-1">Listening...</p>
+            <p className="text-white/60 text-sm">Tap anywhere to stop</p>
+          </motion.button>
+        )}
+      </AnimatePresence>
+
+      {/* Full-screen transcribing overlay */}
+      <AnimatePresence>
+        {isTranscribing && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-40 flex flex-col items-center justify-center bg-black/70 backdrop-blur-sm"
+          >
+            <Loader2 className="w-10 h-10 text-accent animate-spin mb-4" />
+            <p className="text-white text-base font-medium">Transcribing...</p>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
         {messages.length === 0 ? (
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            className="flex flex-col items-center justify-center h-full gap-4 text-center px-6"
+            className="flex flex-col items-center justify-center h-full gap-5 text-center px-6"
           >
-            <div className="w-16 h-16 rounded-3xl bg-accent/10 border border-accent/20 flex items-center justify-center">
-              <Sparkles className="w-8 h-8 text-accent" />
-            </div>
+            {/* Large tap-to-talk button */}
+            <button
+              onClick={startRecording}
+              disabled={loading}
+              className="relative flex items-center justify-center focus:outline-none"
+            >
+              <motion.div
+                animate={{ scale: [1, 1.08, 1], opacity: [0.4, 0.15, 0.4] }}
+                transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
+                className="absolute w-36 h-36 rounded-full bg-accent"
+              />
+              <motion.div
+                animate={{ scale: [1, 1.05, 1], opacity: [0.3, 0.1, 0.3] }}
+                transition={{ duration: 2, repeat: Infinity, ease: "easeInOut", delay: 0.3 }}
+                className="absolute w-28 h-28 rounded-full bg-accent"
+              />
+              <div className="relative w-20 h-20 rounded-full bg-accent flex items-center justify-center shadow-lg">
+                <Mic className="w-9 h-9 text-accent-foreground" />
+              </div>
+            </button>
+
             <div>
-              <p className="font-heading font-semibold text-foreground mb-1">How can I help you today?</p>
-              <p className="text-sm text-muted-foreground">I can find recipes, save them, manage your tasks, and more.</p>
+              <p className="font-heading font-semibold text-foreground mb-1">Tap to speak</p>
+              <p className="text-sm text-muted-foreground">or type below — I can find recipes,{"\n"}save them, manage tasks, and more.</p>
             </div>
-            <div className="flex flex-col gap-2 w-full mt-2">
+
+            <div className="flex flex-col gap-2 w-full mt-1">
               {SUGGESTIONS.map((s) => (
                 <button
                   key={s}
