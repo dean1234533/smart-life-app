@@ -1,9 +1,11 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { calendarEventsService, tasksService, notesService } from "@/lib/firestoreService";
 import { useCurrentUid } from "@/hooks/useCurrentUid";
+import { fetchGoogleEvents, hasValidToken } from "@/services/googleCalendarService";
+import { startOfMonth, endOfMonth } from "date-fns";
 
-import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, addMonths, subMonths, isToday } from "date-fns";
+import { format, eachDayOfInterval, isSameDay, addMonths, subMonths, isToday } from "date-fns";
 import { ChevronLeft, ChevronRight, CalendarDays, CheckCircle2, Bell, Clock, Settings, Plus, X, LinkIcon } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -19,10 +21,25 @@ export default function CalendarView() {
   const [showForm, setShowForm] = useState(false);
   const [newTitle, setNewTitle] = useState("");
   const [newTime, setNewTime] = useState("09:00");
+  const [googleEvents, setGoogleEvents] = useState([]);
   const queryClient = useQueryClient();
 
+  useEffect(() => {
+    if (!hasValidToken()) return;
+    fetchGoogleEvents(startOfMonth(currentMonth), endOfMonth(currentMonth))
+      .then(setGoogleEvents)
+      .catch(() => {});
+  }, [currentMonth]);
+
   const createEventMutation = useMutation({
-    mutationFn: (data) => calendarEventsService.create(uid, data),
+    mutationFn: async (data) => {
+      const event = await calendarEventsService.create(uid, data);
+      if (hasValidToken()) {
+        const { pushEventToGoogle } = await import("@/services/googleCalendarService");
+        await pushEventToGoogle(data).catch(() => {});
+      }
+      return event;
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["calendar-events", uid] });
       setShowForm(false);
@@ -78,7 +95,8 @@ export default function CalendarView() {
       });
     });
     const dayCalEvents = calEvents.filter((e) => e.event_date && isSameDay(new Date(e.event_date), date));
-    return { tasks: dayTasks, notes: dayNotes, calEvents: dayCalEvents };
+    const dayGoogleEvents = googleEvents.filter((e) => e.event_date && isSameDay(new Date(e.event_date), date));
+    return { tasks: dayTasks, notes: dayNotes, calEvents: [...dayCalEvents, ...dayGoogleEvents] };
   };
 
   const selectedEvents = getEventsForDay(selectedDate);
