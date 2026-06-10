@@ -92,6 +92,7 @@ export default function BookingLinks() {
       }
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["bookingLinks", uid] }),
+    onError: (err) => toast.error(`Failed to update: ${err.message}`),
   });
 
   const deleteMutation = useMutation({
@@ -99,6 +100,9 @@ export default function BookingLinks() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["bookingLinks", uid] });
       toast.success("Link deleted");
+    },
+    onError: (err) => {
+      toast.error(`Failed to delete: ${err.message}`);
     },
   });
 
@@ -329,9 +333,15 @@ export default function BookingLinks() {
                       className="w-8 h-8 rounded-lg bg-muted flex items-center justify-center text-muted-foreground hover:text-accent">
                       <Settings className="w-3.5 h-3.5" />
                     </button>
-                    <button onClick={() => deleteMutation.mutate(link.id)}
-                      className="w-8 h-8 rounded-lg bg-muted flex items-center justify-center text-muted-foreground hover:text-destructive">
-                      <Trash2 className="w-3.5 h-3.5" />
+                    <button
+                      onClick={() => {
+                        if (window.confirm(`Delete "${link.title}"?`)) {
+                          deleteMutation.mutate(link.id);
+                        }
+                      }}
+                      disabled={deleteMutation.isPending}
+                      className="w-8 h-8 rounded-lg bg-muted flex items-center justify-center text-muted-foreground hover:text-destructive disabled:opacity-40">
+                      {deleteMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
                     </button>
                   </div>
                 </div>

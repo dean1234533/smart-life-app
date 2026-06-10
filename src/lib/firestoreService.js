@@ -199,12 +199,10 @@ export const invitesService = {
     return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
   },
   create: async (data) => {
-    const ref = await addDoc(collection(firestore, 'invites'), {
-      ...data,
-      used: false,
-      createdAt: serverTimestamp(),
-    });
-    return { id: ref.id, ...data };
+    // Use setDoc with data.id as the document path so Register.jsx can look it up by that ID
+    const ref = doc(firestore, 'invites', data.id);
+    await setDoc(ref, { ...data, used: false, createdAt: serverTimestamp() });
+    return { id: data.id, ...data };
   },
   get: async (id) => {
     const snap = await getDoc(doc(firestore, 'invites', id));
