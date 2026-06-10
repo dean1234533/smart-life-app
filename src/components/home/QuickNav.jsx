@@ -79,27 +79,24 @@ export default function QuickNav() {
                   );
                 })}
                 <button
-                  onClick={() => {
+                  onClick={async () => {
                     const url = `${window.location.origin}/book`;
-                    const fallback = () => {
+                    let copied = false;
+                    // Try modern API first (must await BEFORE closing modal or page loses focus)
+                    if (navigator.clipboard && window.isSecureContext) {
+                      try { await navigator.clipboard.writeText(url); copied = true; } catch {}
+                    }
+                    // Fallback: textarea trick
+                    if (!copied) {
                       const el = document.createElement("textarea");
                       el.value = url;
-                      el.style.cssText = "position:fixed;opacity:0";
+                      el.style.cssText = "position:fixed;left:-9999px;top:50%;opacity:1";
                       document.body.appendChild(el);
-                      el.focus();
-                      el.select();
-                      try { document.execCommand("copy"); } catch {}
-                      document.body.removeChild(el);
-                    };
-                    if (navigator.clipboard?.writeText) {
-                      navigator.clipboard.writeText(url).then(
-                        () => toast.success("Booking link copied!"),
-                        () => { fallback(); toast.success("Booking link copied!"); }
-                      );
-                    } else {
-                      fallback();
-                      toast.success("Booking link copied!");
+                      el.focus(); el.select();
+                      try { copied = document.execCommand("copy"); } catch {}
+                      el.remove();
                     }
+                    toast[copied ? "success" : "info"](copied ? "Booking link copied!" : `Your link: ${url}`, { duration: copied ? 3000 : 8000 });
                     setOpen(false);
                   }}
                   className="flex flex-col items-center gap-1.5 p-3 rounded-xl bg-muted/50 hover:bg-accent/10 hover:text-accent transition-colors"

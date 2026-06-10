@@ -116,12 +116,28 @@ export default function BookingLinks() {
     }
   };
 
-  const copyLink = (link) => {
+  const copyLink = async (link) => {
     const url = `${window.location.origin}/book/${link.slug}`;
-    navigator.clipboard.writeText(url);
-    setCopiedId(link.id);
-    toast.success("Link copied!");
-    setTimeout(() => setCopiedId(null), 2000);
+    let copied = false;
+    if (navigator.clipboard && window.isSecureContext) {
+      try { await navigator.clipboard.writeText(url); copied = true; } catch {}
+    }
+    if (!copied) {
+      const el = document.createElement("textarea");
+      el.value = url;
+      el.style.cssText = "position:fixed;left:-9999px;top:50%";
+      document.body.appendChild(el);
+      el.focus(); el.select();
+      try { copied = document.execCommand("copy"); } catch {}
+      el.remove();
+    }
+    if (copied) {
+      setCopiedId(link.id);
+      toast.success("Link copied!");
+      setTimeout(() => setCopiedId(null), 2000);
+    } else {
+      toast.info(`Copy: ${url}`, { duration: 8000 });
+    }
   };
 
   const handleTitleChange = (t) => {
