@@ -111,8 +111,9 @@ Respond as the assistant. Be helpful, concise, and proactive. Use markdown for f
       const response = await invokeGemini(prompt, null, uid, userApiKey);
       const content = typeof response === "string" ? response : (response?.text || response?.response || JSON.stringify(response));
       setMessages((prev) => [...prev, { role: "assistant", content }]);
-    } catch {
-      setMessages((prev) => [...prev, { role: "assistant", content: "Sorry, I couldn't process that. Please check your API key in Settings." }]);
+    } catch (err) {
+      console.error('SmartAgent error:', err);
+      setMessages((prev) => [...prev, { role: "assistant", content: `Error: ${err?.message || 'Unknown error'}` }]);
     } finally {
       setLoading(false);
     }
