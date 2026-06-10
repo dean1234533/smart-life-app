@@ -127,7 +127,7 @@ Respond as the assistant. Be helpful, concise, and proactive. Use markdown for f
   };
 
   return (
-    <div className="flex flex-col h-screen pt-0">
+    <div className="flex flex-col h-[100dvh] pt-0">
       <div className="shrink-0 px-4 pt-12 pb-4 border-b border-border/50 glass">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-2xl bg-accent/15 border border-accent/30 flex items-center justify-center glow-cyan">
@@ -185,7 +185,7 @@ Respond as the assistant. Be helpful, concise, and proactive. Use markdown for f
         <div ref={bottomRef} />
       </div>
 
-      <div className="shrink-0 px-4 pb-28 pt-3 border-t border-border/50 glass">
+      <div className="shrink-0 px-4 pb-24 pt-3 border-t border-border/50 glass" style={{ paddingBottom: 'max(6rem, calc(5rem + env(safe-area-inset-bottom)))' }}>
         <div className="flex gap-2 items-end">
           <textarea
             ref={inputRef}

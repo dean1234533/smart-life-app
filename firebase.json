@@ -6,5 +6,16 @@
   "firestore": {
     "rules": "firestore.rules",
     "indexes": "firestore.indexes.json"
+  },
+  "hosting": {
+    "public": "firebase-hosting-public",
+    "ignore": ["firebase.json", "**/.*"],
+    "redirects": [
+      {
+        "source": "/**",
+        "destination": "https://smart-life-app.pages.dev",
+        "type": 301
+      }
+    ]
   }
 }

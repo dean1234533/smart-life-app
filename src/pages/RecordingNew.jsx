@@ -90,22 +90,43 @@ export default function RecordingNew() {
 
   const startRecording = async () => {
     if (!navigator.mediaDevices?.getUserMedia) {
-      toast.error("Microphone not available. Please open the app in a full browser tab.");
+      toast.error("Microphone not available on this browser. Try opening the app in Safari or Chrome.");
       return;
     }
     let stream;
     try {
-      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    } catch {
-      toast.error("Microphone access denied. Please allow microphone permission.");
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+    } catch (err) {
+      if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+        toast.error("Microphone access denied. Please allow microphone in your browser settings.");
+      } else {
+        toast.error(`Microphone error: ${err.message}`);
+      }
       return;
     }
-    const mediaRecorder = new MediaRecorder(stream);
+
+    // Pick the best supported MIME type — iOS only supports audio/mp4
+    const preferredTypes = [
+      'audio/webm;codecs=opus',
+      'audio/webm',
+      'audio/mp4',
+      'audio/ogg;codecs=opus',
+      'audio/ogg',
+    ];
+    const mimeType = preferredTypes.find((t) => {
+      try { return MediaRecorder.isTypeSupported(t); } catch { return false; }
+    }) || '';
+
+    const mediaRecorder = mimeType
+      ? new MediaRecorder(stream, { mimeType })
+      : new MediaRecorder(stream);
+
     mediaRecorderRef.current = mediaRecorder;
     chunksRef.current = [];
     mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data); };
     mediaRecorder.onstop = () => {
-      setAudioBlob(new Blob(chunksRef.current, { type: "audio/webm" }));
+      const actualType = mediaRecorder.mimeType || mimeType || 'audio/webm';
+      setAudioBlob(new Blob(chunksRef.current, { type: actualType }));
       stream.getTracks().forEach((t) => t.stop());
     };
     mediaRecorder.start(250);

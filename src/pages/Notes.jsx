@@ -99,7 +99,7 @@ function NoteCard({ note, index }) {
       <Link to={`/notes/${note.id}`}
         className="block p-4 rounded-2xl bg-card border border-border/50 hover:border-accent/30 transition-all">
         <div className="flex items-start justify-between mb-2">
-          <h3 className="font-heading font-semibold text-sm truncate flex-1">{note.title || "Untitled Note"}</h3>
+          <h3 className="font-heading font-semibold text-sm truncate flex-1 min-w-0">{note.title || "Untitled Note"}</h3>
           {note.detected_intent && note.detected_intent !== "general" && (
             <Badge variant="outline" className={`text-[10px] ml-2 shrink-0 ${intentColors[note.detected_intent]}`}>
               {note.detected_intent}

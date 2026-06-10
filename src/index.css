@@ -89,10 +89,42 @@
 @layer base {
   * {
     @apply border-border outline-ring/50;
+    /* Prevent tap highlight flash on mobile */
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  html {
+    /* Prevent text size inflation on landscape rotation */
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
   }
 
   body {
     @apply bg-background text-foreground font-body;
+    /* Use full dynamic viewport on mobile so keyboard resize works */
+    min-height: 100dvh;
+    /* Smooth momentum scrolling on iOS */
+    -webkit-overflow-scrolling: touch;
+    overflow-x: hidden;
+  }
+
+  /* Safe-area padding helpers */
+  .pb-safe {
+    padding-bottom: max(1rem, env(safe-area-inset-bottom));
+  }
+  .pt-safe {
+    padding-top: max(1rem, env(safe-area-inset-top));
+  }
+
+  /* Prevent long words/URLs from blowing out layouts */
+  p, span, h1, h2, h3, h4, li {
+    overflow-wrap: break-word;
+    word-break: break-word;
+  }
+
+  /* Ensure all inputs are legible on iOS (prevents auto-zoom on focus) */
+  input, textarea, select {
+    font-size: 16px !important;
   }
 }
 

@@ -147,7 +147,7 @@ export default function ShoppingLists() {
                                 ? <CheckSquare className="w-4 h-4 text-accent" />
                                 : <Square className="w-4 h-4 text-muted-foreground" />}
                             </button>
-                            <span className={`text-sm flex-1 ${item.checked ? "line-through text-muted-foreground" : ""}`}>
+                            <span className={`text-sm flex-1 min-w-0 break-words ${item.checked ? "line-through text-muted-foreground" : ""}`}>
                               {item.name}
                             </span>
                             <button onClick={() => removeItem(list, idx)} className="text-muted-foreground/50 hover:text-destructive">

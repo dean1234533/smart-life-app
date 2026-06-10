@@ -77,8 +77,12 @@ async function callGroq(apiKey, prompt, jsonSchema = null) {
 }
 
 async function transcribeWithGroq(apiKey, audioBlob) {
+  const ext = audioBlob.type?.includes('mp4') ? 'mp4'
+    : audioBlob.type?.includes('ogg') ? 'ogg'
+    : audioBlob.type?.includes('wav') ? 'wav'
+    : 'webm';
   const formData = new FormData();
-  formData.append('file', audioBlob, 'audio.webm');
+  formData.append('file', audioBlob, `audio.${ext}`);
   formData.append('model', 'whisper-large-v3');
 
   const res = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
@@ -132,7 +136,13 @@ export async function invokeGemini(prompt, jsonSchema = null, uid = '', userApiK
 
 export async function transcribeAudio(audioBlob, uid = '', userApiKey = '') {
   const arrayBuffer = await audioBlob.arrayBuffer();
-  const base64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
+  // Chunk the conversion to avoid stack overflow on large audio files
+  const bytes = new Uint8Array(arrayBuffer);
+  let binary = '';
+  for (let i = 0; i < bytes.length; i += 8192) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + 8192));
+  }
+  const base64 = btoa(binary);
   const mimeType = audioBlob.type || 'audio/webm';
   const parts = [
     { inlineData: { mimeType, data: base64 } },

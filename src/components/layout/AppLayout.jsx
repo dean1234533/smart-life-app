@@ -9,7 +9,7 @@ export default function AppLayout() {
   return (
     <div className="relative min-h-screen">
       <AnimatedBackground type={prefs.background || 'hexagons'} />
-      <main className="relative z-10 pb-24 max-w-lg mx-auto">
+      <main className="relative z-10 max-w-lg mx-auto w-full" style={{ paddingBottom: 'max(6rem, calc(5rem + env(safe-area-inset-bottom)))' }}>
         <Outlet />
       </main>
       <BottomNav />
