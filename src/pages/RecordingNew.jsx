@@ -282,8 +282,9 @@ Extract ALL of the following:
       const calEvents = await extractAndSaveCalendarEvents(transcriptText, "recording", rec?.id || "pending", uid, userApiKey);
       if (calEvents.length > 0) toast.success(`${calEvents.length} calendar event${calEvents.length > 1 ? "s" : ""} detected!`);
 
-    } catch {
-      toast.error("Failed to process recording. Please try again.");
+    } catch (err) {
+      console.error('Recording processing error:', err);
+      toast.error(`Failed to process recording: ${err?.message || 'Unknown error'}`);
     } finally {
       setIsProcessing(false);
     }
