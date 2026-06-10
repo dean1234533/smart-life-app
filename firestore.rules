@@ -1,28 +1,126 @@
 rules_version = '2';
-
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Users can only read/write their own data
-    match /users/{uid} {
-      allow read, write: if request.auth != null && request.auth.uid == uid;
+    function isAuth() {
+      return request.auth != null;
+    }
 
-      // All subcollections — authenticated user owns them
-      match /{subcollection}/{docId} {
-        allow read, write: if request.auth != null && request.auth.uid == uid;
+    function isOwner(uid) {
+      return request.auth.uid == uid;
+    }
+
+    // All user data lives under users/{uid}/**
+    match /users/{uid} {
+      allow read, write: if isAuth() && isOwner(uid);
+
+      match /notes/{docId} {
+        allow read, delete: if isAuth() && isOwner(uid);
+        allow create, update: if isAuth() && isOwner(uid)
+          && request.resource.data.keys().hasAll(['title', 'content', 'createdAt'])
+          && request.resource.data.title is string
+          && request.resource.data.content is string;
+      }
+
+      match /tasks/{docId} {
+        allow read, delete: if isAuth() && isOwner(uid);
+        allow create, update: if isAuth() && isOwner(uid)
+          && request.resource.data.keys().hasAll(['title', 'status', 'priority', 'createdAt'])
+          && request.resource.data.title is string;
+      }
+
+      match /recordings/{docId} {
+        allow read, write: if isAuth() && isOwner(uid);
+      }
+
+      match /calendarEvents/{docId} {
+        allow read, write: if isAuth() && isOwner(uid);
+      }
+
+      match /shoppingLists/{docId} {
+        allow read, write: if isAuth() && isOwner(uid);
+      }
+
+      match /recipes/{docId} {
+        allow read, write: if isAuth() && isOwner(uid);
+      }
+
+      match /expenses/{docId} {
+        allow read, write: if isAuth() && isOwner(uid);
+      }
+
+      match /contacts/{docId} {
+        allow read, write: if isAuth() && isOwner(uid);
+      }
+
+      match /followUps/{docId} {
+        allow read, write: if isAuth() && isOwner(uid);
+      }
+
+      match /meetingSummaries/{docId} {
+        allow read, write: if isAuth() && isOwner(uid);
+      }
+
+      match /bookingLinks/{docId} {
+        allow read, write: if isAuth() && isOwner(uid);
+      }
+
+      match /bookings/{docId} {
+        allow read, write: if isAuth() && isOwner(uid);
+      }
+
+      match /availability/{docId} {
+        allow read, write: if isAuth() && isOwner(uid);
+      }
+
+      match /memories/{docId} {
+        allow read, write: if isAuth() && isOwner(uid);
+      }
+
+      match /timelineEvents/{docId} {
+        allow read, write: if isAuth() && isOwner(uid);
+      }
+
+      match /chatHistory/{docId} {
+        allow read, write: if isAuth() && isOwner(uid);
+      }
+
+      match /suggestedItems/{docId} {
+        allow read, write: if isAuth() && isOwner(uid);
+      }
+
+      match /mapSessions/{docId} {
+        allow read, write: if isAuth() && isOwner(uid);
+      }
+
+      match /rawTranscriptions/{docId} {
+        allow read, write: if isAuth() && isOwner(uid);
+      }
+
+      match /aiProcessingLogs/{docId} {
+        allow read, write: if isAuth() && isOwner(uid);
+      }
+
+      match /dismissedActions/{docId} {
+        allow read, write: if isAuth() && isOwner(uid);
       }
     }
 
-    // Invites: anyone can read (to check validity), only admin can write
+    // Invites: anyone can read, only admin can write
     match /invites/{inviteId} {
       allow read: if true;
-      allow write: if request.auth != null && request.auth.uid == "REPLACE_WITH_ADMIN_UID";
+      allow write: if isAuth() && request.auth.uid == "K4tyhRdHdvQ6ZfD8cN807VxbGYJ3";
     }
 
-    // Slug index: public read (for booking page), only owner can write
+    // Slug index: public read for booking pages, owner can write
     match /slugIndex/{slugId} {
       allow read: if true;
-      allow write: if request.auth != null;
+      allow write: if isAuth();
+    }
+
+    // Deny everything else
+    match /{document=**} {
+      allow read, write: if false;
     }
   }
 }
