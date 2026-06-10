@@ -20,6 +20,7 @@ import {
 } from "@/lib/firestoreService";
 import { invokeGemini, transcribeAudio } from "@/services/geminiService";
 import { useCurrentUid } from "@/hooks/useCurrentUid";
+import { useUserPrefs } from "@/hooks/useUserPrefs";
 
 function ConfirmCard({ icon: Icon, colorClass, title, children, onAccept, onDismiss, loading }) {
   return (
@@ -47,6 +48,7 @@ function ConfirmCard({ icon: Icon, colorClass, title, children, onAccept, onDism
 
 export default function RecordingNew() {
   const uid = useCurrentUid();
+  const { prefs } = useUserPrefs();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [isRecording, setIsRecording] = useState(false);
@@ -265,19 +267,55 @@ Extract ALL of the following:
       setSavedRecordingId(rec?.id);
       queryClient.invalidateQueries({ queryKey: ["recordings", uid] });
 
-      if (analysis.calendar_events?.length) setPendingCalendar(analysis.calendar_events);
-      if (analysis.follow_up_actions?.length) setPendingFollowUps(analysis.follow_up_actions);
-      if (analysis.expenses?.length) setPendingExpenses(analysis.expenses);
-      if (analysis.new_contacts?.length) setPendingContacts(analysis.new_contacts);
+      if (prefs.autoScan) {
+        // Auto-save everything without confirmation cards
+        if (analysis.calendar_events?.length) {
+          for (const ev of analysis.calendar_events)
+            await calendarEventsService.create(uid, { title: ev.title, date: ev.date, attendees: ev.attendees || [], linkedSummaryId: rec?.id || null }).catch(() => {});
+          toast.success(`${analysis.calendar_events.length} calendar event(s) saved`);
+        }
+        if (analysis.follow_up_actions?.length) {
+          for (const fu of analysis.follow_up_actions)
+            await followUpsService.create(uid, { description: fu.description, expectedBy: fu.expected_by || null, resolved: false, linkedSummaryId: rec?.id || null }).catch(() => {});
+          toast.success(`${analysis.follow_up_actions.length} follow-up(s) saved`);
+        }
+        if (analysis.expenses?.length) {
+          for (const exp of analysis.expenses)
+            await expensesService.create(uid, { description: exp.description, amount: exp.amount, currency: exp.currency || "GBP", linkedSummaryId: rec?.id || null }).catch(() => {});
+          toast.success(`${analysis.expenses.length} expense(s) saved`);
+        }
+        if (analysis.new_contacts?.length) {
+          for (const c of analysis.new_contacts)
+            await contactsService.create(uid, { name: c.name, phone: c.phone || "", email: c.email || "" }).catch(() => {});
+          toast.success(`${analysis.new_contacts.length} contact(s) saved`);
+        }
+        if (analysis.ai_summary) {
+          await meetingSummariesService.create(uid, {
+            title: analysis.suggested_title || title || "Meeting",
+            date: analysis.meeting_date || new Date().toISOString(),
+            attendees: analysis.attendees || analysis.related_people || [],
+            decisions: analysis.detected_decisions || [],
+            followUpActions: (analysis.follow_up_actions || []).map((f) => f.description),
+            summary: analysis.ai_summary,
+          }).catch(() => {});
+        }
+      } else {
+        if (analysis.calendar_events?.length) setPendingCalendar(analysis.calendar_events);
+        if (analysis.follow_up_actions?.length) setPendingFollowUps(analysis.follow_up_actions);
+        if (analysis.expenses?.length) setPendingExpenses(analysis.expenses);
+        if (analysis.new_contacts?.length) setPendingContacts(analysis.new_contacts);
+      }
 
-      setPendingSummary({
-        title: analysis.suggested_title || title || "Meeting",
-        date: analysis.meeting_date || new Date().toISOString(),
-        attendees: analysis.attendees || analysis.related_people || [],
-        decisions: analysis.detected_decisions || [],
-        followUpActions: (analysis.follow_up_actions || []).map(f => f.description),
-        summary: analysis.ai_summary || "",
-      });
+      if (!prefs.autoScan) {
+        setPendingSummary({
+          title: analysis.suggested_title || title || "Meeting",
+          date: analysis.meeting_date || new Date().toISOString(),
+          attendees: analysis.attendees || analysis.related_people || [],
+          decisions: analysis.detected_decisions || [],
+          followUpActions: (analysis.follow_up_actions || []).map(f => f.description),
+          summary: analysis.ai_summary || "",
+        });
+      }
 
       const calEvents = await extractAndSaveCalendarEvents(transcriptText, "recording", rec?.id || "pending", uid, userApiKey);
       if (calEvents.length > 0) toast.success(`${calEvents.length} calendar event${calEvents.length > 1 ? "s" : ""} detected!`);

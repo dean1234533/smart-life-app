@@ -19,6 +19,7 @@ import {
 import { invokeGemini } from "@/services/geminiService";
 import { getNearbyStores, buildDirectionsUrl } from "@/services/googleMapsService";
 import { useCurrentUid } from "@/hooks/useCurrentUid";
+import { useUserPrefs } from "@/hooks/useUserPrefs";
 
 function ConfirmCard({ icon: Icon, color, title, items, onAccept, onDismiss }) {
   if (!items?.length) return null;
@@ -59,6 +60,7 @@ export default function NoteEditor() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const uid = useCurrentUid();
+  const { prefs } = useUserPrefs();
   const isNew = id === "new";
 
   const [title, setTitle] = useState("");
@@ -273,7 +275,83 @@ For suggestions, provide confidence scores (0-1).`;
     queryClient.invalidateQueries({ queryKey: ["recipes", "shoppingLists"] });
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
+    if (prefs.autoScan && content.trim() && !aiResult) {
+      setIsAnalyzing(true);
+      try {
+        const prompt = `Analyze this note and extract structured information:
+
+Note content: "${content}"
+${title ? `Title: "${title}"` : ""}
+
+Extract:
+1. A brief AI summary (1-2 sentences)
+2. Auto-detect the primary intent (shopping, meeting, task, reminder, general, decision, promise, meal_plan)
+3. If intent is "shopping" or "meal_plan", extract a list of specific items/ingredients needed
+4. If intent is "meal_plan", generate 2-3 recipes with ingredients and instructions
+5. Extract any action items with due dates if mentioned
+6. Identify people mentioned
+7. Detect any events or dates mentioned
+8. Generate relevant tags
+9. Provide smart suggestions`;
+
+        const schema = {
+          type: "object",
+          properties: {
+            ai_summary: { type: "string" },
+            detected_intent: { type: "string", enum: ["shopping", "meeting", "task", "reminder", "general", "decision", "promise", "meal_plan"] },
+            shopping_items: { type: "array", items: { type: "string" } },
+            recipes: { type: "array", items: { type: "object", properties: { title: { type: "string" }, ingredients: { type: "array", items: { type: "string" } }, instructions: { type: "string" } } } },
+            extracted_actions: { type: "array", items: { type: "object", properties: { action: { type: "string" }, due_date: { type: "string" }, priority: { type: "string" }, status: { type: "string" } } } },
+            related_people: { type: "array", items: { type: "string" } },
+            tags: { type: "array", items: { type: "string" } },
+            ai_suggestions: { type: "array", items: { type: "object", properties: { type: { type: "string" }, suggestion: { type: "string" }, confidence: { type: "number" } } } },
+            suggested_title: { type: "string" },
+          },
+        };
+
+        const result = await invokeGemini(prompt, schema, uid, userApiKey);
+        if (!title && result.suggested_title) setTitle(result.suggested_title);
+        setAiResult(result);
+
+        // Auto-accept shopping list
+        if ((result.detected_intent === "shopping" || result.detected_intent === "meal_plan") && result.shopping_items?.length) {
+          await shoppingListsService.create(uid, {
+            items: result.shopping_items.map((item) => ({ name: item, checked: false })),
+            title: title || result.suggested_title || "Shopping List",
+          });
+          toast.success(`Shopping list saved (${result.shopping_items.length} items)`);
+        }
+
+        // Auto-accept recipes
+        if (result.detected_intent === "meal_plan" && result.recipes?.length) {
+          for (const recipe of result.recipes) await recipesService.create(uid, recipe);
+          toast.success(`${result.recipes.length} recipes saved`);
+        }
+
+        // Auto-extract calendar events
+        await extractAndSaveCalendarEvents(content, "note", "pending", uid, userApiKey);
+
+        const saveData = {
+          title: title || result.suggested_title || "Untitled Note",
+          content,
+          is_pinned: isPinned,
+          ai_summary: result.ai_summary,
+          tags: result.tags,
+          detected_intent: result.detected_intent,
+          extracted_actions: result.extracted_actions,
+          related_people: result.related_people,
+          ai_suggestions: result.ai_suggestions,
+        };
+        saveMutation.mutate(saveData);
+        return;
+      } catch {
+        toast.error("Auto-scan failed, saving note without analysis.");
+      } finally {
+        setIsAnalyzing(false);
+      }
+    }
+
     const data = {
       title: title || "Untitled Note",
       content,

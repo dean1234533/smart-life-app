@@ -1,7 +1,7 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Key, Loader2, Eye, EyeOff, Check,
-  LogOut, ArrowLeft, Shield, Bell, Calendar, ExternalLink
+  LogOut, ArrowLeft, Shield, Bell, Calendar, ExternalLink, Sparkles
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,8 +9,9 @@ import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import { signOut } from "firebase/auth";
 import { firebaseAuth } from "@/lib/firebase";
-import { getOrCreateUser, updateUserDoc } from "@/lib/firestoreService";
+import { updateUserDoc } from "@/lib/firestoreService";
 import { useCurrentUid } from "@/hooks/useCurrentUid";
+import { useUserPrefs } from "@/hooks/useUserPrefs";
 
 const ADMIN_UID = import.meta.env.VITE_ADMIN_UID || "";
 
@@ -18,19 +19,12 @@ export default function Settings() {
   const navigate = useNavigate();
   const uid = useCurrentUid();
   const isAdmin = uid === ADMIN_UID;
-  const [loading, setLoading] = useState(true);
+  const { prefs, loading, setPref } = useUserPrefs();
 
   const [apiKey, setApiKey] = useState("");
   const [showKey, setShowKey] = useState(false);
   const [savingKey, setSavingKey] = useState(false);
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
-
-  useEffect(() => {
-    if (!uid) return;
-    getOrCreateUser(uid)
-      .then((profile) => { if (profile?.apiKey) setApiKey(profile.apiKey); })
-      .finally(() => setLoading(false));
-  }, [uid]);
 
   const saveApiKey = async () => {
     if (!uid || !apiKey.trim()) return;
@@ -43,6 +37,11 @@ export default function Settings() {
     } finally {
       setSavingKey(false);
     }
+  };
+
+  const toggleAutoScan = async (val) => {
+    await setPref('autoScan', val);
+    toast.success(val ? "Auto-scan enabled" : "Auto-scan disabled");
   };
 
   const requestNotifications = async () => {
@@ -127,6 +126,23 @@ export default function Settings() {
               </a>
             </>
           )}
+        </section>
+
+        <section className="p-4 rounded-2xl bg-card border border-border/50 space-y-3">
+          <div className="flex items-center gap-2">
+            <Sparkles className="w-4 h-4 text-accent" />
+            <h2 className="text-sm font-heading font-semibold">AI Auto-Scan</h2>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            When enabled, AI automatically scans every note and recording you save — extracting shopping lists, tasks, calendar events, expenses, and contacts without needing to tap "Analyze".
+          </p>
+          <div className="flex items-center justify-between">
+            <div>
+              <span className="text-sm">Auto-scan notes & recordings</span>
+              <p className="text-xs text-muted-foreground">{prefs.autoScan ? "On — saves everything automatically" : "Off — manual analysis only"}</p>
+            </div>
+            <Switch checked={prefs.autoScan} onCheckedChange={toggleAutoScan} />
+          </div>
         </section>
 
         <section className="p-4 rounded-2xl bg-card border border-border/50 space-y-3">
