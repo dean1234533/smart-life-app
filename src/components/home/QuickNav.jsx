@@ -54,7 +54,12 @@ export default function QuickNav() {
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 20, scale: 0.95 }}
               transition={{ type: "spring", stiffness: 400, damping: 30 }}
-              className="fixed bottom-28 left-1/2 -translate-x-1/2 z-50 w-80 rounded-2xl border border-border bg-card p-5 shadow-2xl max-h-[70vh] overflow-y-auto"
+              className="fixed left-1/2 -translate-x-1/2 z-50 rounded-2xl border border-border bg-card p-4 shadow-2xl overflow-y-auto"
+              style={{
+                bottom: 'max(7rem, calc(5.5rem + env(safe-area-inset-bottom)))',
+                width: 'min(20rem, calc(100vw - 1.5rem))',
+                maxHeight: 'min(70vh, calc(100vh - 12rem))',
+              }}
             >
               <div className="flex items-center justify-between mb-4">
                 <span className="font-heading font-semibold text-sm">Go to...</span>
@@ -63,7 +68,7 @@ export default function QuickNav() {
                 </button>
               </div>
 
-              <div className="grid grid-cols-4 gap-2">
+              <div className="grid grid-cols-4 gap-1.5">
                 {NAV_ITEMS.map((item) => {
                   const Icon = item.icon;
                   return (
@@ -71,7 +76,7 @@ export default function QuickNav() {
                       key={item.path}
                       to={item.path}
                       onClick={() => setOpen(false)}
-                      className="flex flex-col items-center gap-1.5 p-3 rounded-xl bg-muted/50 hover:bg-accent/10 hover:text-accent transition-colors"
+                      className="flex flex-col items-center gap-1 p-2 rounded-xl bg-muted/50 hover:bg-accent/10 hover:text-accent transition-colors"
                     >
                       <Icon className="w-5 h-5" />
                       <span className="text-[10px] font-medium text-center leading-tight">{item.label}</span>
@@ -99,7 +104,7 @@ export default function QuickNav() {
                     toast[copied ? "success" : "info"](copied ? "Booking link copied!" : `Your link: ${url}`, { duration: copied ? 3000 : 8000 });
                     setOpen(false);
                   }}
-                  className="flex flex-col items-center gap-1.5 p-3 rounded-xl bg-muted/50 hover:bg-accent/10 hover:text-accent transition-colors"
+                  className="flex flex-col items-center gap-1 p-2 rounded-xl bg-muted/50 hover:bg-accent/10 hover:text-accent transition-colors"
                 >
                   <Share2 className="w-5 h-5" />
                   <span className="text-[10px] font-medium text-center leading-tight">Share Link</span>
