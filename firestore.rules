@@ -106,10 +106,15 @@ service cloud.firestore {
       }
     }
 
-    // Invites: anyone can read, only admin can write
+    // Invites: anyone can read; admin can create/delete;
+    // any authenticated user can mark their own claimed invite as used
     match /invites/{inviteId} {
       allow read: if true;
-      allow write: if isAuth() && request.auth.uid == "K4tyhRdHdvQ6ZfD8cN807VxbGYJ3";
+      allow create, delete: if isAuth() && request.auth.uid == "K4tyhRdHdvQ6ZfD8cN807VxbGYJ3";
+      allow update: if isAuth() && (
+        request.auth.uid == "K4tyhRdHdvQ6ZfD8cN807VxbGYJ3" ||
+        (resource.data.used == false && request.resource.data.used == true)
+      );
     }
 
     // Slug index: public read for booking pages, owner can write
