@@ -1,12 +1,14 @@
 {
+  "id": "smart-life-app-pages-dev",
   "name": "Smart Life",
   "short_name": "Smart Life",
   "description": "Your AI-powered life organizer",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
   "background_color": "#0d1520",
-  "theme_color": "#22d3ee",
-  "orientation": "portrait",
+  "theme_color": "#0d1520",
+  "orientation": "portrait-primary",
   "icons": [
     {
       "src": "/favicon.svg",
