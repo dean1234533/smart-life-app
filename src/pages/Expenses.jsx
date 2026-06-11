@@ -132,6 +132,16 @@ export default function Expenses() {
     return net;
   }, [incomeByCur, expensesByCur]);
 
+  // Total for the currently displayed (tab-filtered) list
+  const displayedTotalByCur = useMemo(() => {
+    const totals = {};
+    displayed.forEach((e) => {
+      const cur = e.currency || "GBP";
+      totals[cur] = (totals[cur] || 0) + (e.amount || 0);
+    });
+    return totals;
+  }, [displayed]);
+
   // Available tax years from data
   const taxYears = useMemo(() => {
     const years = new Set([currentTaxYear]);
@@ -246,6 +256,31 @@ export default function Expenses() {
           </button>
         ))}
       </div>
+
+      {/* Tab total */}
+      {displayed.length > 0 && (
+        <div className={`flex items-center justify-between px-4 py-3 rounded-2xl mb-4 ${
+          tab === "income" ? "bg-emerald-500/10 border border-emerald-500/20" :
+          tab === "expenses" ? "bg-rose-500/10 border border-rose-500/20" :
+          "bg-accent/5 border border-accent/20"
+        }`}>
+          <span className="text-xs font-heading font-semibold text-muted-foreground uppercase tracking-wider">
+            {tab === "income" ? "Total Earned" : tab === "expenses" ? "Total Spent" : "Total"}
+          </span>
+          <div className="text-right">
+            {Object.entries(displayedTotalByCur).map(([cur, amt]) => (
+              <p key={cur} className={`text-base font-display font-bold ${
+                tab === "income" ? "text-emerald-400" :
+                tab === "expenses" ? "text-rose-400" :
+                "text-foreground"
+              }`}>
+                {tab === "income" ? "+" : tab === "expenses" ? "-" : ""}{formatAmt(cur, amt)}
+              </p>
+            ))}
+            <p className="text-[10px] text-muted-foreground">{displayed.length} item{displayed.length !== 1 ? "s" : ""}</p>
+          </div>
+        </div>
+      )}
 
       {/* Add form */}
       <AnimatePresence>
