@@ -13,7 +13,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import { toast } from 'sonner';
 import {
   getDevices, saveDevices, getActiveDeviceId, setActiveDeviceId,
-  sendKey, testDevice, isProxyRunning,
+  sendKey, testDevice, isProxyRunning, discoverDevices,
   rokuGetApps, rokuLaunchApp,
   STREAMING_SERVICES,
 } from '@/services/tvRemoteService';
@@ -99,6 +99,10 @@ export default function Remote() {
   const [helperOk, setHelperOk] = useState(null);
   const [sending, setSending] = useState(false);
 
+  // Auto-discovery state
+  const [discovering, setDiscovering] = useState(false);
+  const [discovered, setDiscovered] = useState([]); // TVs found but not yet saved
+
   // Device form
   const [showForm, setShowForm] = useState(false);
   const [formName, setFormName] = useState('');
@@ -111,12 +115,30 @@ export default function Remote() {
 
   const activeDevice = devices.find(d => d.id === activeId) || devices[0] || null;
 
+  // Auto-scan when the helper becomes available
+  const runDiscovery = useCallback(async () => {
+    setDiscovering(true);
+    try {
+      const found = await discoverDevices();
+      // Only show TVs not already saved
+      const savedIps = new Set(getDevices().map(d => d.ip));
+      setDiscovered(found.filter(d => !savedIps.has(d.ip)));
+    } catch {
+      // Silently fail — discovery is best-effort
+    } finally {
+      setDiscovering(false);
+    }
+  }, []);
+
   useEffect(() => {
     const devs = getDevices();
     setDevices(devs);
     setActiveId(getActiveDeviceId() || devs[0]?.id || null);
-    isProxyRunning().then(setHelperOk);
-  }, []);
+    isProxyRunning().then(ok => {
+      setHelperOk(ok);
+      if (ok) runDiscovery(); // auto-scan immediately if helper is already running
+    });
+  }, [runDiscovery]);
 
   useEffect(() => {
     if (!activeDevice || activeDevice.type !== 'roku' || !helperOk) return;
@@ -160,6 +182,19 @@ export default function Remote() {
     toast.success(`${dev.name} added!`);
   };
 
+  // One-tap add from the discovered list
+  const addDiscovered = (found) => {
+    const label = DEVICE_TYPES.find(t => t.id === found.type)?.label || 'TV';
+    const dev = { id: nanoid(8), name: found.name || label, type: found.type, ip: found.ip };
+    const updated = [...devices, dev];
+    setDevices(updated);
+    saveDevices(updated);
+    if (!activeId) { setActiveId(dev.id); setActiveDeviceId(dev.id); }
+    setDiscovered(prev => prev.filter(d => d.ip !== found.ip));
+    toast.success(`${dev.name} added!`);
+    setTab('remote');
+  };
+
   const removeDevice = (id) => {
     const updated = devices.filter(d => d.id !== id);
     setDevices(updated);
@@ -193,8 +228,12 @@ export default function Remote() {
     setHelperOk(null);
     const ok = await isProxyRunning();
     setHelperOk(ok);
-    if (ok) toast.success('Connected! Your remote is ready to use.');
-    else toast.error('PC Helper not detected. Follow the steps below to get started.');
+    if (ok) {
+      toast.success('Connected! Scanning for your TVs...');
+      runDiscovery();
+    } else {
+      toast.error('PC Helper not detected. Follow the steps below to get started.');
+    }
   };
 
   // ── UI ────────────────────────────────────────────────────────────────────
@@ -271,18 +310,49 @@ export default function Remote() {
       {/* ── REMOTE TAB ── */}
       {tab === 'remote' && (
         <div className="space-y-4">
-          {/* No devices nudge */}
+          {/* No devices — show scanning state or nudge */}
           {devices.length === 0 && (
-            <div className="rounded-2xl bg-muted/20 border border-border/40 p-5 text-center space-y-3">
-              <Tv className="w-10 h-10 text-muted-foreground mx-auto" />
-              <div>
-                <p className="text-sm font-medium mb-1">No TV added yet</p>
-                <p className="text-xs text-muted-foreground">Go to the "My TVs" tab to add your TV — it only takes a minute.</p>
+            discovering ? (
+              <div className="rounded-2xl bg-accent/5 border border-accent/20 p-5 text-center space-y-3">
+                <Loader2 className="w-8 h-8 text-accent mx-auto animate-spin" />
+                <p className="text-sm font-medium">Scanning your network for TVs...</p>
+                <p className="text-xs text-muted-foreground">This takes about 5 seconds</p>
               </div>
-              <Button size="sm" onClick={() => setTab('mytvs')} className="rounded-xl bg-accent text-accent-foreground">
-                <Plus className="w-3.5 h-3.5 mr-1.5" />Add my TV
-              </Button>
-            </div>
+            ) : discovered.length > 0 ? (
+              <div className="space-y-3">
+                <p className="text-sm font-medium">TVs found on your network — tap to add:</p>
+                {discovered.map(d => (
+                  <div key={d.ip} className="flex items-center justify-between gap-3 bg-card rounded-xl p-3 border border-border/50">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <Tv className="w-4 h-4 text-accent shrink-0" />
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium truncate">{d.name}</p>
+                        <p className="text-xs text-muted-foreground">{DEVICE_TYPES.find(t => t.id === d.type)?.label}</p>
+                      </div>
+                    </div>
+                    <Button size="sm" onClick={() => addDiscovered(d)}
+                      className="rounded-xl bg-accent text-accent-foreground shrink-0">
+                      <Plus className="w-3.5 h-3.5 mr-1" />Add
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="rounded-2xl bg-muted/20 border border-border/40 p-5 text-center space-y-3">
+                <Tv className="w-10 h-10 text-muted-foreground mx-auto" />
+                <div>
+                  <p className="text-sm font-medium mb-1">No TV added yet</p>
+                  <p className="text-xs text-muted-foreground">
+                    {helperOk
+                      ? 'Go to "My TVs" to scan your network and add your TV automatically.'
+                      : 'Start the PC Helper first, then your TV will be found automatically.'}
+                  </p>
+                </div>
+                <Button size="sm" onClick={() => setTab('mytvs')} className="rounded-xl bg-accent text-accent-foreground">
+                  {helperOk ? <><Wifi className="w-3.5 h-3.5 mr-1.5" />Find my TV</> : <><Plus className="w-3.5 h-3.5 mr-1.5" />Get started</>}
+                </Button>
+              </div>
+            )
           )}
 
           {/* Device chips */}
@@ -496,6 +566,43 @@ export default function Remote() {
               }
             </Button>
           </div>
+
+          {/* ── Auto-discovered TVs ── */}
+          {(discovering || discovered.length > 0) && (
+            <div className="rounded-2xl border border-accent/30 bg-accent/5 p-4 space-y-3">
+              <div className="flex items-center gap-2">
+                {discovering
+                  ? <Loader2 className="w-4 h-4 text-accent animate-spin" />
+                  : <CheckCircle2 className="w-4 h-4 text-accent" />
+                }
+                <p className="text-sm font-medium">
+                  {discovering ? 'Scanning your network for TVs...' : `Found ${discovered.length} TV${discovered.length !== 1 ? 's' : ''} on your network`}
+                </p>
+              </div>
+              {!discovering && discovered.map(d => (
+                <div key={d.ip} className="flex items-center justify-between gap-3 bg-card rounded-xl p-3 border border-border/50">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <Tv className="w-4 h-4 text-accent shrink-0" />
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium truncate">{d.name}</p>
+                      <p className="text-xs text-muted-foreground">{DEVICE_TYPES.find(t => t.id === d.type)?.label}</p>
+                    </div>
+                  </div>
+                  <Button size="sm" onClick={() => addDiscovered(d)}
+                    className="rounded-xl bg-accent text-accent-foreground shrink-0">
+                    <Plus className="w-3.5 h-3.5 mr-1" />Add
+                  </Button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Scan button (when helper is connected but no discovered results showing) */}
+          {helperOk && !discovering && discovered.length === 0 && (
+            <Button variant="outline" onClick={runDiscovery} className="w-full rounded-xl gap-2">
+              <Wifi className="w-4 h-4" />Scan for TVs on my network
+            </Button>
+          )}
 
           {/* Saved TVs list */}
           {devices.length > 0 && (

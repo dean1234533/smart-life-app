@@ -433,120 +433,94 @@ export default function Settings() {
         <section className="p-4 rounded-2xl bg-card border border-border/50 space-y-4">
           <div className="flex items-center gap-2">
             <Cpu className="w-4 h-4 text-accent" />
-            <h2 className="text-sm font-heading font-semibold">Local AI (No Credits)</h2>
-            <span className="ml-auto text-[10px] bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full">Free</span>
+            <h2 className="text-sm font-heading font-semibold">Local AI</h2>
+            <span className="ml-auto text-[10px] bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full">Free · No credits</span>
           </div>
           <p className="text-xs text-muted-foreground">
-            Run AI directly on this device — no cloud API credits needed. When configured, local AI is always tried first before any paid service.
+            When available, the app automatically uses AI running on your own device — no internet credits needed. It checks every time you open the app.
           </p>
 
-          {/* Chrome built-in AI */}
-          <div className="rounded-xl border border-border/50 p-3 space-y-2">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <div className="w-6 h-6 rounded-lg bg-blue-500/20 flex items-center justify-center">
-                  <span className="text-xs">C</span>
-                </div>
-                <div>
-                  <p className="text-sm font-medium">Chrome Built-in AI</p>
-                  <p className="text-xs text-muted-foreground">Gemini Nano — runs fully on-device</p>
-                </div>
+          {/* Chrome built-in AI status */}
+          <div className="rounded-xl bg-muted/30 p-3 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <div className="w-7 h-7 rounded-lg bg-blue-500/20 flex items-center justify-center shrink-0">
+                <span className="text-sm">C</span>
               </div>
-              {chromeAiStatus === 'checking' && <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />}
-              {chromeAiStatus === 'readily' && (
-                <span className="text-[10px] bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full flex items-center gap-1">
-                  <Check className="w-3 h-3" />Ready
-                </span>
-              )}
-              {chromeAiStatus === 'after-download' && (
-                <span className="text-[10px] bg-yellow-500/20 text-yellow-400 px-2 py-0.5 rounded-full">Needs download</span>
-              )}
-              {(chromeAiStatus === 'no' || chromeAiStatus === 'unavailable') && (
-                <span className="text-[10px] bg-muted text-muted-foreground px-2 py-0.5 rounded-full">Not available</span>
-              )}
+              <div>
+                <p className="text-sm font-medium">Chrome AI</p>
+                <p className="text-xs text-muted-foreground">Built into Chrome on your device</p>
+              </div>
             </div>
-            {chromeAiStatus === 'after-download' && (
-              <p className="text-xs text-yellow-400/80">
-                Open <strong>chrome://flags</strong> and enable <em>Prompt API for Gemini Nano</em>, then restart Chrome.
-              </p>
+            {chromeAiStatus === 'checking' && <Loader2 className="w-4 h-4 animate-spin text-muted-foreground shrink-0" />}
+            {chromeAiStatus === 'readily' && (
+              <span className="text-[10px] bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full shrink-0 flex items-center gap-1">
+                <Check className="w-3 h-3" />Active
+              </span>
             )}
-            {(chromeAiStatus === 'no' || chromeAiStatus === 'unavailable') && (
-              <p className="text-xs text-muted-foreground">
-                Requires Chrome 127+ on desktop with Gemini Nano support. Not available in this browser.
-              </p>
+            {(chromeAiStatus === 'after-download' || chromeAiStatus === 'no' || chromeAiStatus === 'unavailable') && (
+              <span className="text-[10px] bg-muted text-muted-foreground px-2 py-0.5 rounded-full shrink-0">Not available</span>
             )}
           </div>
 
-          {/* Ollama */}
+          {/* Ollama auto-detect status */}
+          <div className="rounded-xl bg-muted/30 p-3 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <div className="w-7 h-7 rounded-lg bg-purple-500/20 flex items-center justify-center shrink-0">
+                <Wifi className="w-3.5 h-3.5 text-purple-400" />
+              </div>
+              <div>
+                <p className="text-sm font-medium">Ollama</p>
+                <p className="text-xs text-muted-foreground">
+                  {ollamaUrl ? `Detected at ${ollamaUrl}` : 'Not detected on this device'}
+                </p>
+              </div>
+            </div>
+            {ollamaUrl
+              ? <span className="text-[10px] bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full shrink-0 flex items-center gap-1"><Check className="w-3 h-3" />Active</span>
+              : <span className="text-[10px] bg-muted text-muted-foreground px-2 py-0.5 rounded-full shrink-0">Not running</span>
+            }
+          </div>
+
+          {/* Manual override — collapsed by default */}
           <div className="rounded-xl border border-border/50 overflow-hidden">
             <button
               onClick={() => setOllamaExpanded(!ollamaExpanded)}
-              className="w-full flex items-center justify-between p-3 hover:bg-muted/30 transition-colors"
+              className="w-full flex items-center justify-between px-3 py-2.5 text-xs text-muted-foreground hover:text-foreground hover:bg-muted/30 transition-colors"
             >
-              <div className="flex items-center gap-2">
-                <div className="w-6 h-6 rounded-lg bg-purple-500/20 flex items-center justify-center">
-                  <Wifi className="w-3.5 h-3.5 text-purple-400" />
-                </div>
-                <div className="text-left">
-                  <p className="text-sm font-medium">Ollama (Local Server)</p>
-                  <p className="text-xs text-muted-foreground">
-                    {ollamaUrl ? `${ollamaUrl} · ${ollamaModel}` : 'Run any open model on your own machine'}
-                  </p>
-                </div>
-              </div>
-              <ChevronDown className={`w-4 h-4 text-muted-foreground transition-transform ${ollamaExpanded ? 'rotate-180' : ''}`} />
+              <span>Manual setup (advanced)</span>
+              <ChevronDown className={`w-4 h-4 transition-transform ${ollamaExpanded ? 'rotate-180' : ''}`} />
             </button>
-
             {ollamaExpanded && (
               <div className="border-t border-border/50 p-3 space-y-3">
-                <div className="space-y-2">
-                  <Input
-                    placeholder="Ollama URL (e.g. http://localhost:11434)"
-                    value={ollamaUrl}
-                    onChange={e => { setOllamaUrl(e.target.value); setOllamaResult(null); }}
-                    className="rounded-xl text-sm"
-                  />
-                  <Input
-                    placeholder="Model name (e.g. llama3.2, mistral, phi3.5)"
-                    value={ollamaModel}
-                    onChange={e => { setOllamaModel(e.target.value); setOllamaResult(null); }}
-                    className="rounded-xl text-sm"
-                  />
-                </div>
-
+                <p className="text-xs text-muted-foreground">
+                  Install <a href="https://ollama.com" target="_blank" rel="noopener noreferrer" className="text-accent hover:underline">Ollama</a> on your computer, start it, and the app will detect it automatically next time. Or enter a custom address below.
+                </p>
+                <Input
+                  placeholder="Custom address (e.g. http://192.168.1.5:11434)"
+                  value={ollamaUrl}
+                  onChange={e => { setOllamaUrl(e.target.value); setOllamaResult(null); }}
+                  className="rounded-xl text-sm"
+                />
+                <Input
+                  placeholder="Model (e.g. llama3.2)"
+                  value={ollamaModel}
+                  onChange={e => { setOllamaModel(e.target.value); setOllamaResult(null); }}
+                  className="rounded-xl text-sm"
+                />
                 {ollamaResult && (
                   <p className={`text-xs px-2 py-1.5 rounded-lg ${ollamaResult.ok ? 'bg-emerald-500/10 text-emerald-400' : 'bg-destructive/10 text-destructive'}`}>
                     {ollamaResult.message}
                   </p>
                 )}
-
                 <div className="flex gap-2">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={handleTestOllama}
-                    disabled={!ollamaUrl.trim() || testingOllama}
-                    className="rounded-xl flex-1"
-                  >
-                    {testingOllama ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Test connection'}
+                  <Button size="sm" variant="outline" onClick={handleTestOllama}
+                    disabled={!ollamaUrl.trim() || testingOllama} className="rounded-xl flex-1">
+                    {testingOllama ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Test'}
                   </Button>
-                  <Button
-                    size="sm"
-                    onClick={saveLocalAI}
-                    className="rounded-xl flex-1 bg-accent text-accent-foreground hover:bg-accent/90"
-                  >
+                  <Button size="sm" onClick={saveLocalAI}
+                    className="rounded-xl flex-1 bg-accent text-accent-foreground hover:bg-accent/90">
                     <Check className="w-3.5 h-3.5 mr-1.5" />Save
                   </Button>
-                </div>
-
-                <div className="bg-muted/30 rounded-xl p-2.5 space-y-1">
-                  <p className="text-[11px] font-medium text-muted-foreground">Setup guide</p>
-                  <p className="text-[10px] text-muted-foreground leading-relaxed">
-                    1. Install Ollama from <a href="https://ollama.com" target="_blank" rel="noopener noreferrer" className="text-accent hover:underline">ollama.com</a><br />
-                    2. Run: <code className="bg-muted px-1 rounded text-[10px]">OLLAMA_ORIGINS=* ollama serve</code><br />
-                    3. Pull a model: <code className="bg-muted px-1 rounded text-[10px]">ollama pull llama3.2</code><br />
-                    4. Enter the URL above and tap Save
-                  </p>
                 </div>
               </div>
             )}

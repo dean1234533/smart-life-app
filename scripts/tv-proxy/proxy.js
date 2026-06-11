@@ -11,6 +11,8 @@
  */
 const http    = require('http');
 const https   = require('https');
+const net     = require('net');
+const os      = require('os');
 const WebSocket = require('ws');
 
 const PORT = parseInt(process.argv[2] || '7654', 10);
@@ -149,6 +151,95 @@ function sendLgKey(ip, key) {
   });
 }
 
+// ── Network discovery ─────────────────────────────────────────────────────────
+
+// Get the most likely local subnet (e.g. "192.168.1")
+function getLocalSubnet() {
+  const nets = os.networkInterfaces();
+  for (const iface of Object.values(nets)) {
+    for (const addr of iface) {
+      if (addr.family === 'IPv4' && !addr.internal) {
+        return addr.address.split('.').slice(0, 3).join('.');
+      }
+    }
+  }
+  return '192.168.1';
+}
+
+// Fast TCP reachability check
+function tcpOpen(ip, port, timeoutMs = 600) {
+  return new Promise((resolve) => {
+    const s = new net.Socket();
+    let done = false;
+    const finish = (v) => { if (!done) { done = true; s.destroy(); resolve(v); } };
+    s.setTimeout(timeoutMs);
+    s.once('connect', () => finish(true));
+    s.once('timeout', () => finish(false));
+    s.once('error',   () => finish(false));
+    s.connect(port, ip);
+  });
+}
+
+// Confirm Roku and get its friendly name
+async function probeRoku(ip) {
+  try {
+    const r = await localFetch(`http://${ip}:8060/query/device-info`, { signal: AbortSignal.timeout?.(1500) });
+    if (!r.ok) return null;
+    const xml = await r.text();
+    const m = xml.match(/<friendly-device-name>([^<]+)<\/friendly-device-name>/);
+    return { type: 'roku', ip, name: m?.[1] || `Roku (${ip})` };
+  } catch { return null; }
+}
+
+// Confirm Samsung
+async function probeSamsung(ip) {
+  for (const port of [8001, 8002]) {
+    try {
+      const r = await localFetch(`http://${ip}:${port}/api/v2/`, { signal: AbortSignal.timeout?.(1500) });
+      if (r.ok) {
+        const d = await r.json().catch(() => ({}));
+        return { type: 'samsung', ip, name: d.device?.name || d.DeviceName || `Samsung TV (${ip})` };
+      }
+    } catch {}
+  }
+  return null;
+}
+
+// Scan the whole subnet for TVs (runs in ~1-2 seconds over typical home WiFi)
+async function discoverTVs() {
+  const subnet = getLocalSubnet();
+  const found = [];
+
+  // Build all scan tasks: for each IP check ports 8060 (Roku), 8001/8002 (Samsung), 3000 (LG)
+  const scanTasks = [];
+  for (let i = 1; i <= 254; i++) {
+    const ip = `${subnet}.${i}`;
+    scanTasks.push(async () => {
+      const [rokuOpen, samsungOpen, lgOpen] = await Promise.all([
+        tcpOpen(ip, 8060),
+        tcpOpen(ip, 8001),
+        tcpOpen(ip, 3000),
+      ]);
+      const results = [];
+      if (rokuOpen)   { const d = await probeRoku(ip);    if (d) results.push(d); }
+      if (samsungOpen){ const d = await probeSamsung(ip); if (d) results.push(d); }
+      if (lgOpen)     results.push({ type: 'lg', ip, name: `LG TV (${ip})` });
+      return results;
+    });
+  }
+
+  // Run 40 at a time to avoid flooding the home router
+  const BATCH = 40;
+  for (let i = 0; i < scanTasks.length; i += BATCH) {
+    const batch = scanTasks.slice(i, i + BATCH);
+    const results = await Promise.allSettled(batch.map(fn => fn()));
+    for (const r of results) {
+      if (r.status === 'fulfilled') found.push(...r.value);
+    }
+  }
+  return found;
+}
+
 // ── Request router ─────────────────────────────────────────────────────────────
 const server = http.createServer(async (req, res) => {
   if (req.method === 'OPTIONS') { res.writeHead(204, CORS); res.end(); return; }
@@ -157,7 +248,19 @@ const server = http.createServer(async (req, res) => {
   const path = url.pathname;
 
   // /status
-  if (path === '/status') return json(res, 200, { ok: true, version: '1.1.0', port: PORT });
+  if (path === '/status') return json(res, 200, { ok: true, version: '1.2.0', port: PORT });
+
+  // /discover — scan local network for TVs automatically
+  if (path === '/discover') {
+    try {
+      console.log('Scanning local network for TVs...');
+      const devices = await discoverTVs();
+      console.log(`Found ${devices.length} TV(s):`, devices.map(d => `${d.name} (${d.ip})`).join(', ') || 'none');
+      return json(res, 200, { ok: true, devices });
+    } catch (e) {
+      return json(res, 500, { error: e.message });
+    }
+  }
 
   // /roku/{ip}/keypress/{key}  or  /roku/{ip}/query/apps  etc.
   const rokuMatch = path.match(/^\/roku\/([^/]+)(\/.*)/);

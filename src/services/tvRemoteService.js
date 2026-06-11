@@ -23,6 +23,14 @@ export async function isProxyRunning() {
   } catch { return false; }
 }
 
+// Scan local network for TVs via the proxy — returns array of { type, ip, name }
+export async function discoverDevices() {
+  const res = await fetch(`${PROXY}/discover`, { signal: AbortSignal.timeout(15000) });
+  if (!res.ok) throw new Error('Discovery failed');
+  const { devices } = await res.json();
+  return devices || [];
+}
+
 // ── Chromecast / Google Cast (Chrome-only native API) ─────────────────────────
 export function isCastAvailable() {
   return typeof window !== 'undefined' && !!window.chrome?.cast?.isAvailable;

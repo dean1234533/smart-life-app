@@ -25,6 +25,35 @@ function hasOllama() {
   try { return !!localStorage.getItem('local_ai_url'); } catch { return false; }
 }
 
+// Auto-detect Ollama at default localhost port — called once on app start.
+// Silently saves the URL to localStorage so future calls pick it up automatically.
+export async function autoDetectLocalAI() {
+  const candidates = ['http://localhost:11434', 'http://127.0.0.1:11434'];
+  // If already manually configured, just verify it still works
+  const existing = (() => { try { return localStorage.getItem('local_ai_url'); } catch { return null; } })();
+  const toTry = existing ? [existing, ...candidates.filter(u => u !== existing)] : candidates;
+
+  for (const url of toTry) {
+    try {
+      const res = await fetch(`${url}/api/tags`, { signal: AbortSignal.timeout(2000) });
+      if (res.ok) {
+        const data = await res.json().catch(() => ({}));
+        try {
+          localStorage.setItem('local_ai_url', url);
+          if (data.models?.length) {
+            const model = data.models[0].name.split(':')[0];
+            if (!localStorage.getItem('local_ai_model')) {
+              localStorage.setItem('local_ai_model', model);
+            }
+          }
+        } catch {}
+        return { found: true, url, models: data.models?.map(m => m.name) || [] };
+      }
+    } catch {}
+  }
+  return { found: false };
+}
+
 // Chrome's built-in Gemini Nano — zero credits, runs fully on-device.
 async function callChromeAI(prompt, jsonSchema) {
   if (!window.ai?.languageModel) throw new Error('Chrome AI not available');
