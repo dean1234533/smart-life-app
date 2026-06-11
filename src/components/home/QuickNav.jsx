@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import {
-  LayoutGrid, X, FileText, Mic, Calendar, CheckSquare, Clock, Bot,
+  LayoutGrid, X, FileText, Mic, CheckSquare, Clock, Bot,
   Home, ShoppingCart, Users, DollarSign, ChefHat,
   MessageSquare, UserCog, BookOpen, Link as LinkIcon, Dumbbell, Cast, RefreshCw, ShieldCheck
 } from "lucide-react";
@@ -11,7 +11,6 @@ const NAV_ITEMS = [
   { label: "Home",       icon: Home,          path: "/" },
   { label: "Notes",      icon: FileText,       path: "/notes" },
   { label: "Tasks",      icon: CheckSquare,    path: "/tasks" },
-  { label: "Calendar",   icon: Calendar,       path: "/calendar" },
   { label: "Recordings", icon: Mic,            path: "/recordings" },
   { label: "Timeline",   icon: Clock,          path: "/timeline" },
   { label: "Agent",      icon: Bot,            path: "/agent" },

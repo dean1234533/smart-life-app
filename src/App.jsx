@@ -21,7 +21,6 @@ import Recordings from '@/pages/Recordings';
 import RecordingNew from '@/pages/RecordingNew';
 import RecordingDetail from '@/pages/RecordingDetail';
 import Timeline from '@/pages/Timeline';
-import CalendarView from '@/pages/CalendarView';
 import Tasks from '@/pages/Tasks';
 import SmartAgent from '@/pages/SmartAgent';
 import Availability from '@/pages/Availability';
@@ -108,7 +107,6 @@ const AuthenticatedApp = () => {
           <Route path="/recordings/new" element={<RecordingNew />} />
           <Route path="/recordings/:id" element={<RecordingDetail />} />
           <Route path="/timeline" element={<Timeline />} />
-          <Route path="/calendar" element={<CalendarView />} />
           <Route path="/tasks" element={<Tasks />} />
           <Route path="/agent" element={<SmartAgent />} />
           <Route path="/availability" element={<Availability />} />

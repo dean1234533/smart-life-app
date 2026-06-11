@@ -222,6 +222,53 @@ export default {
         return json(await resp.json(), 201, env);
       }
 
+      // Public: get busy times (no auth — booking page calls this)
+      if (path.startsWith('/calendar/freebusy/') && request.method === 'GET') {
+        const uid = decodeURIComponent(path.split('/')[3] || '');
+        if (!uid) return json({ error: 'Missing uid' }, 400, env);
+        try {
+          const token = await getAccessToken(uid, env);
+          const timeMin = url.searchParams.get('timeMin') || new Date().toISOString();
+          const timeMax = url.searchParams.get('timeMax') || new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString();
+          const params = new URLSearchParams({ timeMin, timeMax, singleEvents: 'true', orderBy: 'startTime', maxResults: '250' });
+          const resp = await fetch(`${GOOGLE_CAL_URL}?${params}`, { headers: { Authorization: `Bearer ${token}` } });
+          if (!resp.ok) return json({ busyTimes: [] }, 200, env);
+          const data = await resp.json();
+          const busyTimes = (data.items || []).map(e => ({
+            start: e.start?.dateTime || e.start?.date,
+            end: e.end?.dateTime || e.end?.date,
+          }));
+          return json({ busyTimes }, 200, env);
+        } catch {
+          return json({ busyTimes: [] }, 200, env);
+        }
+      }
+
+      // Public: create a booking in the owner's Google Calendar
+      if (path === '/booking/public' && request.method === 'POST') {
+        const body = await request.json().catch(() => null);
+        if (!body?.ownerUid || !body?.start || !body?.end) return json({ error: 'Missing required fields' }, 400, env);
+        try {
+          const token = await getAccessToken(body.ownerUid, env);
+          const eventBody = {
+            summary: body.summary || 'Booking',
+            description: body.description || '',
+            start: { dateTime: body.start },
+            end: { dateTime: body.end },
+          };
+          if (body.attendeeEmail) eventBody.attendees = [{ email: body.attendeeEmail }];
+          const resp = await fetch(GOOGLE_CAL_URL, {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify(eventBody),
+          });
+          if (!resp.ok) return json({ error: 'Failed to create calendar event' }, 500, env);
+          return json(await resp.json(), 201, env);
+        } catch (err) {
+          return json({ error: err.message }, 500, env);
+        }
+      }
+
       return json({ error: 'Not found' }, 404, env);
     } catch (err) {
       return json({ error: err.message }, err.message.includes('Firebase') ? 401 : 500, env);
