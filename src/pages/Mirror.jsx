@@ -84,7 +84,7 @@ function SenderView() {
   return (
     <div className="px-4 pt-12 pb-6 max-w-lg mx-auto">
       <div className="flex items-center gap-3 mb-6">
-        <button onClick={() => navigate('/remote')} className="text-muted-foreground hover:text-foreground">
+        <button onClick={() => navigate('/')} className="text-muted-foreground hover:text-foreground">
           <ArrowLeft className="w-5 h-5" />
         </button>
         <Cast className="w-5 h-5 text-accent" />
