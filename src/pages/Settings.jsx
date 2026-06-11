@@ -3,7 +3,7 @@ import { useNavigate, Link } from "react-router-dom";
 import { Key, Loader2, Eye, EyeOff, Check,
   LogOut, ArrowLeft, Shield, Bell, Calendar, ExternalLink, Sparkles,
   Link2, Link2Off, Download,
-  Cpu, RefreshCw, Trash2, FileJson, AlertTriangle
+  Trash2, FileJson, AlertTriangle
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,7 +13,6 @@ import { signOut, deleteUser } from "firebase/auth";
 import { firebaseAuth, firestore } from "@/lib/firebase";
 import { collection, getDocs, deleteDoc, doc } from "firebase/firestore";
 import { updateUserDoc, calendarEventsService, getOrCreateUser } from "@/lib/firestoreService";
-import { autoDetectLocalAI, getChromeAIStatus } from "@/services/geminiService";
 import { useCurrentUid } from "@/hooks/useCurrentUid";
 import { useUserPrefs } from "@/hooks/useUserPrefs";
 import { connectGoogleCalendar, disconnectGoogleCalendar, checkGoogleCalendarStatus } from "@/services/googleCalendarService";
@@ -42,8 +41,6 @@ export default function Settings() {
   const [deleteConfirm, setDeleteConfirm] = useState('');
   const [showDeleteSection, setShowDeleteSection] = useState(false);
 
-  // Local AI — 'checking' | 'active' | 'none'
-  const [localAiStatus, setLocalAiStatus] = useState('checking');
 
 
   useEffect(() => {
@@ -54,20 +51,6 @@ export default function Settings() {
       toast.success('Google Calendar connected!');
       window.history.replaceState({}, '', '/settings');
     }
-    // Check for any local AI — Ollama or Chrome built-in
-    const detectAI = async () => {
-      setLocalAiStatus('checking');
-      try {
-        const [ollamaResult, chromeStatus] = await Promise.all([
-          autoDetectLocalAI(),
-          getChromeAIStatus(),
-        ]);
-        setLocalAiStatus(ollamaResult.found || chromeStatus === 'readily' ? 'active' : 'none');
-      } catch {
-        setLocalAiStatus('none');
-      }
-    };
-    detectAI();
   }, []);
 
 
@@ -139,18 +122,6 @@ export default function Settings() {
   };
 
 
-  const recheckLocalAI = async () => {
-    setLocalAiStatus('checking');
-    try {
-      const [ollamaResult, chromeStatus] = await Promise.all([
-        autoDetectLocalAI(),
-        getChromeAIStatus(),
-      ]);
-      setLocalAiStatus(ollamaResult.found || chromeStatus === 'readily' ? 'active' : 'none');
-    } catch {
-      setLocalAiStatus('none');
-    }
-  };
 
   const handleExportData = async () => {
     if (!uid) return;
@@ -316,52 +287,6 @@ export default function Settings() {
           </div>
         </section>
 
-        {/* Local AI */}
-        <section className="p-4 rounded-2xl bg-card border border-border/50 space-y-3">
-          <div className="flex items-center gap-2">
-            <Cpu className="w-4 h-4 text-accent" />
-            <h2 className="text-sm font-heading font-semibold">Local AI</h2>
-            <span className="ml-auto text-[10px] bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full">Free · No credits</span>
-          </div>
-
-          {localAiStatus === 'checking' && (
-            <div className="flex items-center gap-2 text-xs text-muted-foreground py-1">
-              <Loader2 className="w-3.5 h-3.5 animate-spin" />Checking for local AI…
-            </div>
-          )}
-
-          {localAiStatus === 'active' && (
-            <div className="rounded-xl bg-emerald-500/10 border border-emerald-500/20 p-3 flex items-center gap-3">
-              <Check className="w-4 h-4 text-emerald-400 shrink-0" />
-              <div>
-                <p className="text-sm font-medium text-emerald-400">Free AI is active</p>
-                <p className="text-xs text-muted-foreground">Running on your device — no internet credits used</p>
-              </div>
-            </div>
-          )}
-
-          {localAiStatus === 'none' && (
-            <div className="space-y-3">
-              <div className="rounded-xl bg-muted/30 p-3">
-                <p className="text-sm">No local AI found</p>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  Install Ollama on your computer and start it — the app will detect it automatically.
-                </p>
-              </div>
-              <a href="https://ollama.com" target="_blank" rel="noopener noreferrer"
-                className="flex items-center gap-1.5 text-sm text-accent hover:underline w-fit">
-                <ExternalLink className="w-3.5 h-3.5" />Download Ollama (free)
-              </a>
-            </div>
-          )}
-
-          <Button size="sm" variant="ghost" onClick={recheckLocalAI}
-            disabled={localAiStatus === 'checking'}
-            className="w-full rounded-xl text-xs text-muted-foreground hover:text-foreground gap-1.5">
-            <RefreshCw className="w-3 h-3" />
-            {localAiStatus === 'checking' ? 'Checking…' : 'Check again'}
-          </Button>
-        </section>
 
         <section className="p-4 rounded-2xl bg-card border border-border/50 space-y-3">
           <div className="flex items-center gap-2">

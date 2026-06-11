@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Send, Bot, Sparkles, ChefHat, CheckSquare, Loader2, Mic, MicOff } from "lucide-react";
+import { Send, Bot, Sparkles, ChefHat, CheckSquare, Loader2 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
-import { invokeGeminiAgent, invokeGemini, transcribeAudio } from "@/services/geminiService";
+import { invokeGeminiAgent, invokeGemini } from "@/services/geminiService";
 import { getOrCreateUser, recipesService, tasksService } from "@/lib/firestoreService";
 import { useCurrentUid } from "@/hooks/useCurrentUid";
 import { toast } from "sonner";
@@ -18,7 +18,8 @@ IMPORTANT RULES:
 - If the user asks to see their recipes → call list_recipes
 - If the user asks to add a task, reminder, or to-do → call create_task
 - If the user asks to see their tasks → call list_tasks
-- If the user asks to add something to a shopping list → call add_shopping_item
+- If the user mentions shopping, groceries, a meal plan, needing food, or what to buy → call suggest_shopping_items
+- If the user asks to add a specific item to a shopping list → call add_shopping_item
 - For everything else (general questions, advice, facts, health tips, motivation, etc.) → answer directly without tools
 
 Always show the full result to the user. Never say "I can't do that." Be warm, encouraging, and thorough.
@@ -84,13 +85,24 @@ const AGENT_TOOLS = [
   },
   {
     name: 'add_shopping_item',
-    description: "Add an item to the user's shopping list.",
+    description: "Add a single specific item to the user's shopping list.",
     parameters: {
       type: 'object',
       properties: {
         item: { type: 'string', description: 'The item to add, e.g. "milk", "protein powder"' },
       },
       required: ['item'],
+    },
+  },
+  {
+    name: 'suggest_shopping_items',
+    description: "Generate a smart shopping list based on what the user mentions — meals, plans, preferences, or general shopping needs. Always use this when the user talks about shopping, food, groceries, or meal planning.",
+    parameters: {
+      type: 'object',
+      properties: {
+        context: { type: 'string', description: "What the user mentioned, e.g. 'making pasta this week', 'healthy eating', 'weekly shop'" },
+      },
+      required: ['context'],
     },
   },
 ];
@@ -179,13 +191,8 @@ export default function SmartAgent() {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [toolStatus, setToolStatus] = useState("");
-  const [isRecording, setIsRecording] = useState(false);
-  const [isTranscribing, setIsTranscribing] = useState(false);
   const bottomRef = useRef(null);
   const inputRef = useRef(null);
-  const mediaRecorderRef = useRef(null);
-  const chunksRef = useRef([]);
-  const recognitionRef = useRef(null);
 
   useEffect(() => {
     if (!uid) return;
@@ -273,7 +280,6 @@ Format it clearly with bold headings and bullet points.`,
       case 'add_shopping_item': {
         setToolStatus(`Adding "${args.item}" to your shopping list...`);
         const { shoppingListsService } = await import('@/lib/firestoreService');
-        // Get or create a default list
         const lists = await shoppingListsService.list(uid);
         let listId = lists[0]?.id;
         if (!listId) {
@@ -286,82 +292,33 @@ Format it clearly with bold headings and bullet points.`,
         toast.success(`"${args.item}" added to your shopping list`);
         return { success: true, message: `"${args.item}" has been added to your shopping list.` };
       }
+      case 'suggest_shopping_items': {
+        setToolStatus('Building your shopping list...');
+        const suggested = await invokeGemini(
+          `The user said: "${args.context}"
+
+Based on this, generate a helpful shopping list. Include:
+1. The specific items they need
+2. Any related items they probably need but didn't mention
+3. Healthier alternatives or extras they might like
+
+Group items into sections (e.g. Fresh Produce, Dairy, Meat, Bakery, Store Cupboard).
+Keep it practical and realistic.
+
+After the list, add 1-2 short suggestions for meals or food ideas they might enjoy based on what they mentioned.
+
+Format clearly with bold section headings and bullet points.`,
+          null,
+          uid,
+          userApiKey
+        );
+        return { text: typeof suggested === 'string' ? suggested : JSON.stringify(suggested) };
+      }
       default:
         return { error: `Unknown tool: ${name}` };
     }
   }, [uid, userApiKey]);
 
-  const startRecording = async () => {
-    // Use the browser's built-in speech recognition — free, no API key needed.
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (SpeechRecognition) {
-      const recognition = new SpeechRecognition();
-      recognition.lang = 'en-US';
-      recognition.continuous = false;
-      recognition.interimResults = false;
-      recognition.onstart = () => setIsRecording(true);
-      recognition.onend = () => { setIsRecording(false); recognitionRef.current = null; };
-      recognition.onerror = (e) => {
-        setIsRecording(false);
-        recognitionRef.current = null;
-        if (e.error === 'not-allowed') toast.error("Microphone access denied — allow it in browser settings.");
-        else if (e.error === 'no-speech') toast.error("No speech detected — try again.");
-        else if (e.error !== 'aborted') toast.error("Voice recognition failed — try typing instead.");
-      };
-      recognition.onresult = (event) => {
-        const transcript = event.results[0][0].transcript;
-        if (transcript?.trim()) send(transcript.trim());
-      };
-      recognitionRef.current = recognition;
-      recognition.start();
-      return;
-    }
-
-    // Fallback: MediaRecorder → Gemini transcription (requires API key)
-    if (!navigator.mediaDevices?.getUserMedia) {
-      toast.error("Microphone not available. Try Chrome or Safari.");
-      return;
-    }
-    let stream;
-    try {
-      stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-    } catch (err) {
-      toast.error(err.name === 'NotAllowedError' ? "Microphone access denied — allow it in browser settings." : `Microphone error: ${err.message}`);
-      return;
-    }
-    const preferredTypes = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg;codecs=opus', 'audio/ogg'];
-    const mimeType = preferredTypes.find((t) => { try { return MediaRecorder.isTypeSupported(t); } catch { return false; } }) || '';
-    const recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
-    mediaRecorderRef.current = recorder;
-    chunksRef.current = [];
-    recorder.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data); };
-    recorder.onstop = async () => {
-      stream.getTracks().forEach((t) => t.stop());
-      const actualType = recorder.mimeType || mimeType || 'audio/webm';
-      const blob = new Blob(chunksRef.current, { type: actualType });
-      setIsTranscribing(true);
-      try {
-        const text = await transcribeAudio(blob, uid, userApiKey);
-        if (text?.trim()) send(text.trim());
-        else toast.error("Couldn't hear anything — try again.");
-      } catch (err) {
-        toast.error(`Transcription failed: ${err.message}`);
-      } finally {
-        setIsTranscribing(false);
-      }
-    };
-    recorder.start(250);
-    setIsRecording(true);
-  };
-
-  const stopRecording = () => {
-    if (recognitionRef.current) {
-      recognitionRef.current.stop();
-      return;
-    }
-    mediaRecorderRef.current?.stop();
-    setIsRecording(false);
-  };
 
   const send = async (overrideText) => {
     const text = (overrideText ?? input).trim();
@@ -444,50 +401,6 @@ Format it clearly with bold headings and bullet points.`,
         </div>
       </div>
 
-      {/* Full-screen tap-to-stop overlay while recording */}
-      <AnimatePresence>
-        {isRecording && (
-          <motion.button
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            onClick={stopRecording}
-            className="fixed inset-0 z-40 flex flex-col items-center justify-center bg-black/70 backdrop-blur-sm"
-          >
-            <motion.div
-              animate={{ scale: [1, 1.12, 1] }}
-              transition={{ duration: 1.2, repeat: Infinity, ease: "easeInOut" }}
-              className="w-28 h-28 rounded-full bg-red-500/20 border-2 border-red-400 flex items-center justify-center mb-6"
-            >
-              <motion.div
-                animate={{ scale: [1, 1.15, 1] }}
-                transition={{ duration: 1.2, repeat: Infinity, ease: "easeInOut", delay: 0.1 }}
-                className="w-20 h-20 rounded-full bg-red-500/30 flex items-center justify-center"
-              >
-                <Mic className="w-9 h-9 text-red-400" />
-              </motion.div>
-            </motion.div>
-            <p className="text-white text-lg font-semibold mb-1">Listening...</p>
-            <p className="text-white/60 text-sm">Tap anywhere to stop</p>
-          </motion.button>
-        )}
-      </AnimatePresence>
-
-      {/* Full-screen transcribing overlay */}
-      <AnimatePresence>
-        {isTranscribing && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-40 flex flex-col items-center justify-center bg-black/70 backdrop-blur-sm"
-          >
-            <Loader2 className="w-10 h-10 text-accent animate-spin mb-4" />
-            <p className="text-white text-base font-medium">Transcribing...</p>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
         {messages.length === 0 ? (
           <motion.div
@@ -495,30 +408,12 @@ Format it clearly with bold headings and bullet points.`,
             animate={{ opacity: 1, y: 0 }}
             className="flex flex-col items-center justify-center h-full gap-5 text-center px-6"
           >
-            {/* Large tap-to-talk button */}
-            <button
-              onClick={startRecording}
-              disabled={loading}
-              className="relative flex items-center justify-center focus:outline-none"
-            >
-              <motion.div
-                animate={{ scale: [1, 1.08, 1], opacity: [0.4, 0.15, 0.4] }}
-                transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
-                className="absolute w-36 h-36 rounded-full bg-accent"
-              />
-              <motion.div
-                animate={{ scale: [1, 1.05, 1], opacity: [0.3, 0.1, 0.3] }}
-                transition={{ duration: 2, repeat: Infinity, ease: "easeInOut", delay: 0.3 }}
-                className="absolute w-28 h-28 rounded-full bg-accent"
-              />
-              <div className="relative w-20 h-20 rounded-full bg-accent flex items-center justify-center shadow-lg">
-                <Mic className="w-9 h-9 text-accent-foreground" />
-              </div>
-            </button>
-
+            <div className="w-16 h-16 rounded-2xl bg-accent/15 border border-accent/30 flex items-center justify-center">
+              <Sparkles className="w-8 h-8 text-accent" />
+            </div>
             <div>
-              <p className="font-heading font-semibold text-foreground mb-1">Tap to speak</p>
-              <p className="text-sm text-muted-foreground">or type below — I can find recipes,{"\n"}save them, manage tasks, and more.</p>
+              <p className="font-heading font-semibold text-foreground mb-1">What can I help with?</p>
+              <p className="text-sm text-muted-foreground">Type below — I can find recipes, workouts,{"\n"}manage tasks, shopping lists, and more.</p>
             </div>
 
             <div className="flex flex-col gap-2 w-full mt-1">
@@ -559,31 +454,11 @@ Format it clearly with bold headings and bullet points.`,
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKey}
-            placeholder={isRecording ? "Listening..." : isTranscribing ? "Transcribing..." : "Ask your Smart Life Agent..."}
+            placeholder="Ask your Smart Life Agent..."
             rows={1}
-            disabled={isRecording || isTranscribing}
-            className="flex-1 resize-none rounded-2xl border border-border bg-muted/50 px-4 py-3 text-sm placeholder:text-muted-foreground focus:outline-none focus:border-accent/50 focus:ring-1 focus:ring-accent/30 transition-all max-h-32 disabled:opacity-60"
+            className="flex-1 resize-none rounded-2xl border border-border bg-muted/50 px-4 py-3 text-sm placeholder:text-muted-foreground focus:outline-none focus:border-accent/50 focus:ring-1 focus:ring-accent/30 transition-all max-h-32"
             style={{ minHeight: 44 }}
           />
-
-          {/* Mic button — tap to start, tap again to stop */}
-          <button
-            onClick={isRecording ? stopRecording : startRecording}
-            disabled={loading || isTranscribing}
-            className={`w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 transition-all disabled:opacity-40 ${
-              isRecording
-                ? "bg-red-500 hover:bg-red-600 animate-pulse"
-                : "border border-border bg-muted/50 hover:bg-muted text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            {isTranscribing ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
-            ) : isRecording ? (
-              <MicOff className="w-4 h-4 text-white" />
-            ) : (
-              <Mic className="w-4 h-4" />
-            )}
-          </button>
 
           <button
             onClick={() => send()}

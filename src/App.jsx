@@ -45,21 +45,6 @@ import VPN from '@/pages/VPN';
 
 const ADMIN_UID = import.meta.env.VITE_ADMIN_UID || '';
 
-// Silently probe for local Ollama once the page loads — no user action needed.
-import('@/services/geminiService').then(({ autoDetectLocalAI }) => {
-  autoDetectLocalAI().then(result => {
-    if (result.found) {
-      const prevUrl = localStorage.getItem('local_ai_url');
-      // Only toast the first time it's discovered (not on every reload)
-      const firstTime = !prevUrl;
-      if (firstTime) {
-        import('sonner').then(({ toast }) =>
-          toast.success('Local AI detected — using free on-device AI automatically')
-        );
-      }
-    }
-  }).catch(() => {});
-});
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isAuthenticated, user } = useAuth();

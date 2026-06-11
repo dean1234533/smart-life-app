@@ -216,30 +216,24 @@ export default function BookingLinks() {
         </div>
       </div>
 
-      {/* Connected Calendars (informational — OAuth handled externally) */}
+      {/* Connected Calendars */}
       <div className="p-4 rounded-2xl bg-card border border-border/50 mb-6">
         <div className="flex items-center gap-2 mb-3">
           <Calendar className="w-4 h-4 text-accent" />
           <span className="text-sm font-heading font-semibold">Connected Calendars</span>
         </div>
         <p className="text-xs text-muted-foreground mb-3">
-          Connect calendars to show only genuinely free slots across all calendars.
+          Connect your Google Calendar to show only genuinely free slots.
         </p>
-        {[
-          { id: "google", label: "Google Calendar", icon: "🗓️" },
-          { id: "outlook", label: "Microsoft Outlook", icon: "📅" },
-          { id: "apple", label: "Apple Calendar (CalDAV)", icon: "🍎" },
-        ].map(cal => (
-          <div key={cal.id} className="flex items-center justify-between py-2 border-t border-border/40 first:border-0">
-            <div className="flex items-center gap-2">
-              <span className="text-base">{cal.icon}</span>
-              <span className="text-sm">{cal.label}</span>
-            </div>
-            <Button size="sm" variant="outline"
-              onClick={() => toast.info("Calendar OAuth integration requires backend setup. See /settings.")}
-              className="rounded-xl h-7 text-xs">Connect</Button>
+        <div className="flex items-center justify-between py-2">
+          <div className="flex items-center gap-2">
+            <span className="text-base">🗓️</span>
+            <span className="text-sm">Google Calendar</span>
           </div>
-        ))}
+          <Button size="sm" variant="outline"
+            onClick={() => navigate("/settings")}
+            className="rounded-xl h-7 text-xs">Connect in Settings</Button>
+        </div>
       </div>
 
       {/* New Link Form */}

@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import {
   LayoutGrid, X, FileText, Mic, Calendar, CheckSquare, Clock, Bot,
-  Home, Share2, ShoppingCart, Users, DollarSign, ChefHat,
+  Home, ShoppingCart, Users, DollarSign, ChefHat,
   MessageSquare, UserCog, BookOpen, Link as LinkIcon, Dumbbell, Cast, RefreshCw, ShieldCheck
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -89,14 +89,6 @@ export default function QuickNav() {
                     </Link>
                   );
                 })}
-                <Link
-                  to="/booking-links"
-                  onClick={() => setOpen(false)}
-                  className="flex flex-col items-center gap-1 p-2 rounded-xl bg-muted/50 hover:bg-accent/10 hover:text-accent transition-colors"
-                >
-                  <Share2 className="w-5 h-5" />
-                  <span className="text-[10px] font-medium text-center leading-tight">Share Link</span>
-                </Link>
               </div>
             </motion.div>
             </div>
