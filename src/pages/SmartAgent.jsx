@@ -7,15 +7,38 @@ import { getOrCreateUser, recipesService, tasksService } from "@/lib/firestoreSe
 import { useCurrentUid } from "@/hooks/useCurrentUid";
 import { toast } from "sonner";
 
-const SYSTEM_PROMPT = `You are a Smart Life Agent — an AI personal assistant embedded in the Smart Life app.
-You can manage the user's recipes, tasks, and more using the available tools.
-When a user asks you to find, generate, or suggest a recipe, call find_recipe to create it, then present it nicely and ask if they'd like to save it. If they say yes, call save_recipe.
-Be helpful, concise, and proactive. Use markdown for formatting when appropriate.`;
+const SYSTEM_PROMPT = `You are a Smart Life Agent — a friendly, helpful AI personal assistant built into the Smart Life app.
+
+You can do anything the user asks. Answer questions, give advice, create workout plans, find recipes, manage their tasks, and more.
+
+IMPORTANT RULES:
+- If the user asks for a workout, fitness plan, exercise routine, or training programme → call find_workout
+- If the user asks for a recipe, meal, dish, or food idea → call find_recipe
+- If the user wants to save a recipe → call save_recipe
+- If the user asks to see their recipes → call list_recipes
+- If the user asks to add a task, reminder, or to-do → call create_task
+- If the user asks to see their tasks → call list_tasks
+- If the user asks to add something to a shopping list → call add_shopping_item
+- For everything else (general questions, advice, facts, health tips, motivation, etc.) → answer directly without tools
+
+Always show the full result to the user. Never say "I can't do that." Be warm, encouraging, and thorough.
+Format workouts and recipes clearly with headings, sets/reps, and instructions. Use markdown.`;
 
 const AGENT_TOOLS = [
   {
+    name: 'find_workout',
+    description: 'Create a complete workout or fitness plan. Use whenever the user asks for a workout, exercise, training, or fitness routine.',
+    parameters: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: 'What the user wants, e.g. "30 minute full body workout", "beginner chest day", "leg day for weight loss"' },
+      },
+      required: ['query'],
+    },
+  },
+  {
     name: 'find_recipe',
-    description: 'Generate a complete recipe for a dish. Use when the user asks to find, create, or suggest a recipe.',
+    description: 'Generate a complete recipe. Use when the user asks for a recipe, meal idea, or food suggestion.',
     parameters: {
       type: 'object',
       properties: {
@@ -26,46 +49,59 @@ const AGENT_TOOLS = [
   },
   {
     name: 'save_recipe',
-    description: "Save a recipe to the user's recipe collection in the app.",
+    description: "Save a recipe to the user's saved recipes.",
     parameters: {
       type: 'object',
       properties: {
-        title: { type: 'string', description: 'Recipe name' },
-        ingredients: { type: 'array', items: { type: 'string' }, description: 'List of ingredients with quantities' },
-        instructions: { type: 'string', description: 'Step-by-step cooking instructions' },
+        title: { type: 'string' },
+        ingredients: { type: 'array', items: { type: 'string' } },
+        instructions: { type: 'string' },
       },
       required: ['title', 'ingredients', 'instructions'],
     },
   },
   {
     name: 'list_recipes',
-    description: "List all recipes the user has saved in the app.",
+    description: "Show all of the user's saved recipes.",
     parameters: { type: 'object', properties: {} },
   },
   {
     name: 'create_task',
-    description: 'Create a new task for the user.',
+    description: 'Add a task or reminder for the user.',
     parameters: {
       type: 'object',
       properties: {
         title: { type: 'string', description: 'Task title' },
-        description: { type: 'string', description: 'Optional details about the task' },
+        description: { type: 'string', description: 'Optional extra details' },
       },
       required: ['title'],
     },
   },
   {
     name: 'list_tasks',
-    description: "List the user's current pending tasks.",
+    description: "Show the user's current to-do list.",
     parameters: { type: 'object', properties: {} },
+  },
+  {
+    name: 'add_shopping_item',
+    description: "Add an item to the user's shopping list.",
+    parameters: {
+      type: 'object',
+      properties: {
+        item: { type: 'string', description: 'The item to add, e.g. "milk", "protein powder"' },
+      },
+      required: ['item'],
+    },
   },
 ];
 
 const SUGGESTIONS = [
-  "Find me a recipe for chicken tikka masala",
-  "What tasks do I have pending?",
-  "Add a task to buy groceries",
-  "Show me my saved recipes",
+  "Give me a 30 minute full body workout",
+  "Find me a quick healthy dinner recipe",
+  "Add a reminder to drink more water",
+  "What are the best foods for building muscle?",
+  "Give me a beginner running plan",
+  "Show me my to-do list",
 ];
 
 function MessageBubble({ message }) {
@@ -163,6 +199,26 @@ export default function SmartAgent() {
 
   const executeToolCall = useCallback(async (name, args) => {
     switch (name) {
+      case 'find_workout': {
+        setToolStatus(`Building your workout...`);
+        const result = await invokeGemini(
+          `Create a complete, detailed workout plan for: ${args.query}.
+Include:
+- A short intro (what it targets, how long)
+- Warm-up (3-5 minutes)
+- Main workout (list each exercise with sets, reps or duration, and rest time)
+- Cool-down
+- Any tips or modifications for beginners
+
+Format it clearly with bold headings and bullet points.`,
+          null,
+          uid,
+          userApiKey
+        );
+        // invokeGemini with null schema returns a string
+        if (typeof result === 'string') return { text: result };
+        return result;
+      }
       case 'find_recipe': {
         setToolStatus(`Generating recipe for "${args.query}"...`);
         const recipe = await invokeGemini(
@@ -212,6 +268,22 @@ export default function SmartAgent() {
         const tasks = await tasksService.list(uid);
         const pending = tasks.filter(t => t.status !== 'done' && t.status !== 'completed');
         return { tasks: pending.map(t => ({ id: t.id, title: t.title })) };
+      }
+      case 'add_shopping_item': {
+        setToolStatus(`Adding "${args.item}" to your shopping list...`);
+        const { shoppingListsService } = await import('@/lib/firestoreService');
+        // Get or create a default list
+        const lists = await shoppingListsService.list(uid);
+        let listId = lists[0]?.id;
+        if (!listId) {
+          const newList = await shoppingListsService.create(uid, { name: 'Shopping List', items: [] });
+          listId = newList.id;
+        }
+        const list = lists[0] || { items: [] };
+        const updatedItems = [...(list.items || []), { name: args.item, checked: false, id: Date.now().toString() }];
+        await shoppingListsService.update(uid, listId, { items: updatedItems });
+        toast.success(`"${args.item}" added to your shopping list`);
+        return { success: true, message: `"${args.item}" has been added to your shopping list.` };
       }
       default:
         return { error: `Unknown tool: ${name}` };

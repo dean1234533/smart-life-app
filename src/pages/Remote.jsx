@@ -1,11 +1,11 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { nanoid } from 'nanoid';
 import {
-  Tv, Plus, Trash2, Check, X, Wifi, WifiOff, ChevronDown,
-  Power, Volume2, VolumeX, ChevronUp, ChevronLeft, ChevronRight,
+  Tv, Plus, Trash2, Check, X, Wifi, WifiOff,
+  Power, Volume2, VolumeX, ChevronUp, ChevronDown, ChevronLeft, ChevronRight,
   SkipBack, SkipForward, Play, Pause, Square, Info, Home, RotateCcw,
-  Settings, Radio, Loader2, ExternalLink, Terminal, ArrowLeft, Cast
+  Settings, Radio, Loader2, ArrowLeft, Cast, Monitor, AlertCircle, CheckCircle2
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -19,13 +19,13 @@ import {
 } from '@/services/tvRemoteService';
 
 const DEVICE_TYPES = [
-  { id: 'roku',    label: 'Roku',           hint: 'e.g. 192.168.1.42' },
+  { id: 'roku',    label: 'Roku',            hint: 'e.g. 192.168.1.42' },
   { id: 'samsung', label: 'Samsung Smart TV', hint: 'e.g. 192.168.1.21' },
-  { id: 'lg',      label: 'LG webOS TV',     hint: 'e.g. 192.168.1.33' },
+  { id: 'lg',      label: 'LG Smart TV',      hint: 'e.g. 192.168.1.33' },
 ];
 
-// ── Remote button component ──────────────────────────────────────────────────
-function RemoteBtn({ icon: Icon, label, action, onPress, className = '', disabled = false, size = 'md', color }) {
+// ── Remote button ────────────────────────────────────────────────────────────
+function RemoteBtn({ icon: Icon, label, action, onPress, className = '', disabled = false, size = 'md' }) {
   const [pressing, setPressing] = useState(false);
   const handlePress = async () => {
     if (disabled || pressing) return;
@@ -33,20 +33,19 @@ function RemoteBtn({ icon: Icon, label, action, onPress, className = '', disable
     try { await onPress(action); } catch {}
     setTimeout(() => setPressing(false), 150);
   };
-  const sz = size === 'lg' ? 'w-14 h-14 text-lg' : size === 'sm' ? 'w-9 h-9 text-[11px]' : 'w-12 h-12';
+  const sz = size === 'lg' ? 'w-14 h-14' : size === 'sm' ? 'w-10 h-10 text-[11px]' : 'w-12 h-12';
   return (
     <motion.button
       whileTap={{ scale: 0.85 }}
       onClick={handlePress}
       disabled={disabled}
       className={`${sz} flex flex-col items-center justify-center gap-0.5 rounded-2xl font-medium transition-all select-none
-        ${pressing ? 'bg-accent/30' : 'bg-white/8 hover:bg-white/15'}
-        ${disabled ? 'opacity-30 cursor-not-allowed' : 'active:scale-90'}
-        ${color || ''}
+        ${pressing ? 'bg-accent/30' : 'bg-white/8 hover:bg-white/15 active:bg-accent/20'}
+        ${disabled ? 'opacity-30 cursor-not-allowed' : ''}
         ${className}`}
       title={label}
     >
-      {Icon && <Icon className={size === 'lg' ? 'w-6 h-6' : size === 'sm' ? 'w-3.5 h-3.5' : 'w-5 h-5'} />}
+      {Icon && <Icon className={size === 'lg' ? 'w-6 h-6' : size === 'sm' ? 'w-4 h-4' : 'w-5 h-5'} />}
       {label && !Icon && <span>{label}</span>}
     </motion.button>
   );
@@ -64,7 +63,7 @@ function DPad({ onPress, disabled }) {
         whileTap={{ scale: 0.88 }}
         onClick={() => onPress('ok')}
         disabled={disabled}
-        className="w-14 h-14 rounded-full bg-accent/80 hover:bg-accent text-white font-bold text-xs flex items-center justify-center shadow-lg disabled:opacity-30"
+        className="w-14 h-14 rounded-full bg-accent/80 hover:bg-accent text-white font-bold text-sm flex items-center justify-center shadow-lg disabled:opacity-30"
       >
         OK
       </motion.button>
@@ -90,31 +89,14 @@ function NumPad({ onPress, disabled }) {
   );
 }
 
-// ── Colour buttons (satellite / Sky / cable) ─────────────────────────────────
-function ColourButtons({ onPress, disabled }) {
-  return (
-    <div className="flex gap-2 justify-center">
-      {[
-        { a: 'red',    bg: 'bg-red-600/70' },
-        { a: 'green',  bg: 'bg-green-600/70' },
-        { a: 'yellow', bg: 'bg-yellow-500/70' },
-        { a: 'blue',   bg: 'bg-blue-600/70' },
-      ].map(({ a, bg }) => (
-        <motion.button key={a} whileTap={{ scale: 0.85 }} onClick={() => onPress(a)} disabled={disabled}
-          className={`w-9 h-5 rounded-full ${bg} disabled:opacity-30`} />
-      ))}
-    </div>
-  );
-}
-
 export default function Remote() {
   const navigate = useNavigate();
-  const [tab, setTab] = useState('remote'); // 'streaming' | 'remote' | 'devices'
+  const [tab, setTab] = useState('streaming');
 
   // Device state
   const [devices, setDevices] = useState([]);
   const [activeId, setActiveId] = useState(null);
-  const [proxyOk, setProxyOk] = useState(null); // null=checking, true, false
+  const [helperOk, setHelperOk] = useState(null);
   const [sending, setSending] = useState(false);
 
   // Device form
@@ -129,46 +111,53 @@ export default function Remote() {
 
   const activeDevice = devices.find(d => d.id === activeId) || devices[0] || null;
 
-  // ── Load saved state ───────────────────────────────────────────────────────
   useEffect(() => {
     const devs = getDevices();
     setDevices(devs);
     setActiveId(getActiveDeviceId() || devs[0]?.id || null);
-    // Check proxy
-    isProxyRunning().then(setProxyOk);
+    isProxyRunning().then(setHelperOk);
   }, []);
 
-  // ── Load Roku apps when device changes ────────────────────────────────────
   useEffect(() => {
-    if (!activeDevice || activeDevice.type !== 'roku' || !proxyOk) return;
+    if (!activeDevice || activeDevice.type !== 'roku' || !helperOk) return;
     rokuGetApps(activeDevice.ip).then(setRokuApps).catch(() => setRokuApps([]));
-  }, [activeDevice?.id, proxyOk]);
+  }, [activeDevice?.id, helperOk]);
 
-  // ── Send key ───────────────────────────────────────────────────────────────
   const handleKey = useCallback(async (key) => {
-    if (!activeDevice) { toast.error('No device selected — add one in the Devices tab'); return; }
-    if (!proxyOk) { toast.error('Proxy not running — see setup in the Devices tab'); return; }
+    if (!activeDevice) {
+      toast.error('No TV selected — go to the My TVs tab and add your TV first');
+      return;
+    }
+    if (!helperOk) {
+      toast.error('PC Helper not running — see the My TVs tab to get set up');
+      return;
+    }
     setSending(true);
     try {
       await sendKey(activeDevice, key);
     } catch (e) {
-      toast.error(e.message || 'Key failed');
+      toast.error('Could not send button press — make sure your TV is on and connected to WiFi');
     } finally {
       setSending(false);
     }
-  }, [activeDevice, proxyOk]);
+  }, [activeDevice, helperOk]);
 
-  // ── Save device ────────────────────────────────────────────────────────────
   const addDevice = () => {
     if (!formIp.trim()) return;
-    const dev = { id: nanoid(8), name: formName.trim() || `${DEVICE_TYPES.find(t=>t.id===formType)?.label} TV`, type: formType, ip: formIp.trim() };
+    const label = DEVICE_TYPES.find(t => t.id === formType)?.label || 'TV';
+    const dev = {
+      id: nanoid(8),
+      name: formName.trim() || `${label}`,
+      type: formType,
+      ip: formIp.trim(),
+    };
     const updated = [...devices, dev];
     setDevices(updated);
     saveDevices(updated);
     if (!activeId) { setActiveId(dev.id); setActiveDeviceId(dev.id); }
     setShowForm(false);
     setFormName(''); setFormIp(''); setFormType('roku');
-    toast.success(`${dev.name} added`);
+    toast.success(`${dev.name} added!`);
   };
 
   const removeDevice = (id) => {
@@ -192,25 +181,25 @@ export default function Remote() {
     setTesting(true);
     try {
       await testDevice({ type: formType, ip: formIp.trim() });
-      toast.success('Device found!');
-    } catch (e) {
-      toast.error(e.message || 'Could not reach device');
+      toast.success('TV found! Tap Save to add it.');
+    } catch {
+      toast.error('Could not find your TV. Check the IP address and make sure it\'s on the same WiFi.');
     } finally {
       setTesting(false);
     }
   };
 
-  const recheckProxy = async () => {
-    setProxyOk(null);
+  const recheckHelper = async () => {
+    setHelperOk(null);
     const ok = await isProxyRunning();
-    setProxyOk(ok);
-    if (ok) toast.success('Proxy connected!');
-    else toast.error('Proxy not running');
+    setHelperOk(ok);
+    if (ok) toast.success('Connected! Your remote is ready to use.');
+    else toast.error('PC Helper not detected. Follow the steps below to get started.');
   };
 
   // ── UI ────────────────────────────────────────────────────────────────────
   return (
-    <div className="px-4 pt-12 pb-6">
+    <div className="px-4 pt-12 pb-24">
       {/* Header */}
       <div className="flex items-center gap-3 mb-5">
         <button onClick={() => navigate('/')} className="text-muted-foreground hover:text-foreground">
@@ -225,7 +214,7 @@ export default function Remote() {
 
       {/* Tabs */}
       <div className="flex gap-1 p-1 rounded-xl bg-muted/40 mb-5">
-        {[['streaming','Streaming'],['remote','Remote'],['devices','Devices']].map(([id,label]) => (
+        {[['streaming','Apps & Streaming'],['remote','Remote'],['mytvs','My TVs']].map(([id,label]) => (
           <button key={id} onClick={() => setTab(id)}
             className={`flex-1 py-1.5 text-xs font-medium rounded-lg transition-all ${tab===id ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}>
             {label}
@@ -243,12 +232,12 @@ export default function Remote() {
               <Cast className="w-5 h-5 text-accent" />
             </div>
             <div>
-              <p className="text-sm font-medium">Screen Mirror</p>
-              <p className="text-xs text-muted-foreground">Cast this screen to any TV or monitor</p>
+              <p className="text-sm font-medium">Mirror Your Screen</p>
+              <p className="text-xs text-muted-foreground">Cast your phone screen to any TV or monitor</p>
             </div>
           </Link>
 
-          <p className="text-xs text-muted-foreground">Tap to open on this device. Long-press on mobile to launch the app directly.</p>
+          <p className="text-xs font-medium text-muted-foreground">Tap to open a streaming app</p>
           <div className="grid grid-cols-4 gap-2">
             {STREAMING_SERVICES.map(svc => (
               <a key={svc.id} href={svc.url} target="_blank" rel="noopener noreferrer"
@@ -267,7 +256,8 @@ export default function Remote() {
               <p className="text-xs font-medium text-muted-foreground">Installed on your Roku</p>
               <div className="grid grid-cols-4 gap-2">
                 {rokuApps.map(app => (
-                  <button key={app.id} onClick={() => rokuLaunchApp(activeDevice.ip, app.id).catch(e => toast.error(e.message))}
+                  <button key={app.id}
+                    onClick={() => rokuLaunchApp(activeDevice.ip, app.id).catch(() => toast.error('Could not open that app'))}
                     className="flex flex-col items-center gap-1 p-2 rounded-xl bg-muted/30 hover:bg-accent/10 transition-colors">
                     <span className="text-[10px] text-center leading-tight">{app.name}</span>
                   </button>
@@ -281,8 +271,22 @@ export default function Remote() {
       {/* ── REMOTE TAB ── */}
       {tab === 'remote' && (
         <div className="space-y-4">
-          {/* Device selector */}
-          {devices.length > 0 ? (
+          {/* No devices nudge */}
+          {devices.length === 0 && (
+            <div className="rounded-2xl bg-muted/20 border border-border/40 p-5 text-center space-y-3">
+              <Tv className="w-10 h-10 text-muted-foreground mx-auto" />
+              <div>
+                <p className="text-sm font-medium mb-1">No TV added yet</p>
+                <p className="text-xs text-muted-foreground">Go to the "My TVs" tab to add your TV — it only takes a minute.</p>
+              </div>
+              <Button size="sm" onClick={() => setTab('mytvs')} className="rounded-xl bg-accent text-accent-foreground">
+                <Plus className="w-3.5 h-3.5 mr-1.5" />Add my TV
+              </Button>
+            </div>
+          )}
+
+          {/* Device chips */}
+          {devices.length > 0 && (
             <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
               {devices.map(d => (
                 <button key={d.id} onClick={() => selectDevice(d.id)}
@@ -295,86 +299,112 @@ export default function Remote() {
                 </button>
               ))}
             </div>
-          ) : (
-            <div className="rounded-xl bg-muted/20 p-4 text-center space-y-2">
-              <Tv className="w-8 h-8 text-muted-foreground mx-auto" />
-              <p className="text-sm text-muted-foreground">No devices added yet</p>
-              <Button size="sm" onClick={() => setTab('devices')} className="rounded-xl bg-accent text-accent-foreground">
-                <Plus className="w-3.5 h-3.5 mr-1.5" />Add a device
-              </Button>
-            </div>
           )}
 
-          {/* Proxy status pill */}
+          {/* Connection status */}
           {devices.length > 0 && (
-            <div
-              onClick={recheckProxy}
-              className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs cursor-pointer transition-colors ${
-                proxyOk === null ? 'bg-muted/30 text-muted-foreground'
-                : proxyOk ? 'bg-emerald-500/10 text-emerald-400'
-                : 'bg-amber-500/10 text-amber-400'
+            <button
+              onClick={recheckHelper}
+              className={`w-full flex items-center gap-2.5 px-4 py-3 rounded-xl text-sm transition-colors ${
+                helperOk === null ? 'bg-muted/30 text-muted-foreground'
+                : helperOk ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
               }`}
             >
-              {proxyOk === null ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : proxyOk ? <Wifi className="w-3.5 h-3.5" /> : <WifiOff className="w-3.5 h-3.5" />}
-              <span>
-                {proxyOk === null ? 'Checking proxy...' : proxyOk ? 'Proxy connected — remote ready' : 'Proxy not running — tap to retry'}
+              {helperOk === null
+                ? <Loader2 className="w-4 h-4 animate-spin shrink-0" />
+                : helperOk
+                  ? <CheckCircle2 className="w-4 h-4 shrink-0" />
+                  : <AlertCircle className="w-4 h-4 shrink-0" />
+              }
+              <span className="flex-1 text-left">
+                {helperOk === null
+                  ? 'Checking connection...'
+                  : helperOk
+                    ? 'Connected — remote is ready'
+                    : 'Not connected yet — tap to retry'
+                }
               </span>
-              {!proxyOk && proxyOk !== null && (
-                <button onClick={() => setTab('devices')} className="ml-auto underline">Setup</button>
+              {!helperOk && helperOk !== null && (
+                <span onClick={(e) => { e.stopPropagation(); setTab('mytvs'); }}
+                  className="text-xs underline shrink-0">Set up</span>
               )}
-            </div>
+            </button>
           )}
 
+          {/* The virtual remote */}
           {devices.length > 0 && (
-            <div className="rounded-2xl bg-[#1a1a2e]/60 border border-white/8 p-5 space-y-5">
-              {/* Power + Input row */}
+            <div className="rounded-2xl bg-[#1a1a2e]/70 border border-white/8 p-5 space-y-5">
+              {/* Power row */}
               <div className="flex justify-between items-center">
                 <RemoteBtn icon={Power} label="Power" action="power" onPress={handleKey} disabled={sending}
                   className="!bg-red-600/30 hover:!bg-red-600/50" />
-                <span className="text-xs text-white/30 font-medium tracking-widest uppercase">
+                <span className="text-xs text-white/30 font-medium tracking-wider">
                   {activeDevice?.name || '—'}
                 </span>
                 <RemoteBtn icon={Info} label="Info" action="options" onPress={handleKey} disabled={sending} />
               </div>
 
-              {/* Volume + Channel */}
+              {/* Vol / D-pad / Channel */}
               <div className="flex justify-between items-center gap-3">
-                <div className="flex flex-col items-center gap-1">
+                {/* Volume */}
+                <div className="flex flex-col items-center gap-1.5">
+                  <span className="text-[9px] text-white/30 uppercase tracking-wider">Volume</span>
                   <RemoteBtn icon={Volume2}  label="Vol+"  action="volUp"   onPress={handleKey} disabled={sending} />
                   <RemoteBtn icon={VolumeX}  label="Mute"  action="mute"    onPress={handleKey} disabled={sending} size="sm" />
-                  <RemoteBtn icon={Volume2}  label="Vol-"  action="volDown" onPress={handleKey} disabled={sending}
-                    className="opacity-70" />
+                  <RemoteBtn icon={Volume2}  label="Vol-"  action="volDown" onPress={handleKey} disabled={sending} className="opacity-60" />
                 </div>
 
                 {/* D-pad */}
                 <DPad onPress={handleKey} disabled={sending} />
 
-                <div className="flex flex-col items-center gap-1">
+                {/* Channel */}
+                <div className="flex flex-col items-center gap-1.5">
+                  <span className="text-[9px] text-white/30 uppercase tracking-wider">Channel</span>
                   <RemoteBtn icon={ChevronUp}   label="Ch+"  action="chUp"   onPress={handleKey} disabled={sending} />
                   <RemoteBtn icon={Radio}        label="Live" action="live"   onPress={handleKey} disabled={sending} size="sm" />
-                  <RemoteBtn icon={ChevronDown}  label="Ch-"  action="chDown" onPress={handleKey} disabled={sending}
-                    className="opacity-70" />
+                  <RemoteBtn icon={ChevronDown}  label="Ch-"  action="chDown" onPress={handleKey} disabled={sending} className="opacity-60" />
                 </div>
               </div>
 
               {/* Back / Home / Settings */}
               <div className="flex justify-center gap-3">
-                <RemoteBtn icon={RotateCcw}  label="Back"     action="back"    onPress={handleKey} disabled={sending} />
-                <RemoteBtn icon={Home}       label="Home"     action="home"    onPress={handleKey} disabled={sending} />
-                <RemoteBtn icon={Settings}   label="Settings" action="options" onPress={handleKey} disabled={sending} />
+                <div className="flex flex-col items-center gap-1">
+                  <RemoteBtn icon={RotateCcw} label="Back"     action="back"    onPress={handleKey} disabled={sending} />
+                  <span className="text-[9px] text-white/30">Back</span>
+                </div>
+                <div className="flex flex-col items-center gap-1">
+                  <RemoteBtn icon={Home}      label="Home"     action="home"    onPress={handleKey} disabled={sending} />
+                  <span className="text-[9px] text-white/30">Home</span>
+                </div>
+                <div className="flex flex-col items-center gap-1">
+                  <RemoteBtn icon={Settings}  label="Settings" action="options" onPress={handleKey} disabled={sending} />
+                  <span className="text-[9px] text-white/30">Settings</span>
+                </div>
               </div>
 
               {/* Media controls */}
               <div className="flex justify-center gap-2">
-                <RemoteBtn icon={SkipBack}    label="Rev"   action="rev"   onPress={handleKey} disabled={sending} />
-                <RemoteBtn icon={Play}        label="Play"  action="play"  onPress={handleKey} disabled={sending} />
-                <RemoteBtn icon={Pause}       label="Pause" action="pause" onPress={handleKey} disabled={sending} />
-                <RemoteBtn icon={Square}      label="Stop"  action="stop"  onPress={handleKey} disabled={sending} />
-                <RemoteBtn icon={SkipForward} label="Fwd"   action="fwd"   onPress={handleKey} disabled={sending} />
+                <RemoteBtn icon={SkipBack}    label="Rewind"   action="rev"   onPress={handleKey} disabled={sending} />
+                <RemoteBtn icon={Play}        label="Play"     action="play"  onPress={handleKey} disabled={sending} />
+                <RemoteBtn icon={Pause}       label="Pause"    action="pause" onPress={handleKey} disabled={sending} />
+                <RemoteBtn icon={Square}      label="Stop"     action="stop"  onPress={handleKey} disabled={sending} />
+                <RemoteBtn icon={SkipForward} label="Forward"  action="fwd"   onPress={handleKey} disabled={sending} />
               </div>
 
               {/* Colour buttons */}
-              <ColourButtons onPress={handleKey} disabled={sending} />
+              <div className="flex gap-2 justify-center">
+                {[
+                  { a: 'red',    bg: 'bg-red-600/70' },
+                  { a: 'green',  bg: 'bg-green-600/70' },
+                  { a: 'yellow', bg: 'bg-yellow-500/70' },
+                  { a: 'blue',   bg: 'bg-blue-600/70' },
+                ].map(({ a, bg }) => (
+                  <motion.button key={a} whileTap={{ scale: 0.85 }}
+                    onClick={() => handleKey(a)} disabled={sending}
+                    className={`w-10 h-5 rounded-full ${bg} disabled:opacity-30`} />
+                ))}
+              </div>
 
               {/* Number pad */}
               <div className="border-t border-white/8 pt-4">
@@ -385,115 +415,202 @@ export default function Remote() {
         </div>
       )}
 
-      {/* ── DEVICES TAB ── */}
-      {tab === 'devices' && (
+      {/* ── MY TVs TAB ── */}
+      {tab === 'mytvs' && (
         <div className="space-y-4">
-          {/* Proxy status + setup */}
-          <div className="rounded-2xl border border-border/50 bg-card p-4 space-y-3">
-            <div className="flex items-center gap-2">
-              <Terminal className="w-4 h-4 text-accent" />
-              <h3 className="text-sm font-heading font-semibold">Local Proxy</h3>
-              <span className={`ml-auto text-[10px] px-2 py-0.5 rounded-full ${proxyOk ? 'bg-emerald-500/20 text-emerald-400' : 'bg-amber-500/20 text-amber-400'}`}>
-                {proxyOk === null ? 'Checking...' : proxyOk ? 'Running' : 'Not running'}
+
+          {/* Connection status card */}
+          <div className="rounded-2xl border border-border/50 bg-card p-4 space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Monitor className="w-4 h-4 text-accent" />
+                <h3 className="text-sm font-semibold">PC Helper</h3>
+              </div>
+              <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${
+                helperOk === null ? 'bg-muted text-muted-foreground'
+                : helperOk ? 'bg-emerald-500/20 text-emerald-400'
+                : 'bg-amber-500/20 text-amber-400'
+              }`}>
+                {helperOk === null ? 'Checking...' : helperOk ? 'Connected' : 'Not running'}
               </span>
             </div>
-            <p className="text-xs text-muted-foreground">
-              The proxy runs on your PC/Mac so the app can reach your TV over WiFi. Start it once and keep it running while using the remote.
+
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              The remote works over your home WiFi. To reach your TV, a small helper program needs to be running on your <strong>Windows or Mac computer</strong> in the background. It takes about 2 minutes to set up once.
             </p>
-            <div className="bg-muted/40 rounded-xl p-3 space-y-1.5 font-mono text-[11px] text-muted-foreground">
-              <p className="text-foreground/80"># First time only:</p>
-              <p>cd scripts/tv-proxy && npm install</p>
-              <p className="text-foreground/80 pt-1"># Every time you want to use the remote:</p>
-              <p>node scripts/tv-proxy/proxy.js</p>
+
+            {/* Steps */}
+            <div className="space-y-3">
+              {[
+                {
+                  num: '1',
+                  title: 'Make sure Node.js is installed on your computer',
+                  detail: 'Download it free from nodejs.org — it takes about 2 minutes. If you already have it, skip to step 2.',
+                  link: { label: 'Download Node.js', url: 'https://nodejs.org' },
+                },
+                {
+                  num: '2',
+                  title: 'Open Terminal (Mac) or Command Prompt (Windows)',
+                  detail: 'On Mac: press Command + Space and type "Terminal". On Windows: press the Windows key and type "cmd".',
+                },
+                {
+                  num: '3',
+                  title: 'Go to the Smart Life app folder',
+                  detail: 'Type this and press Enter: cd Downloads/smart-life-app',
+                },
+                {
+                  num: '4',
+                  title: 'Start the TV helper',
+                  detail: 'Type this and press Enter: node scripts/tv-proxy/proxy.js — leave this window open while you use the remote.',
+                },
+                {
+                  num: '5',
+                  title: 'Come back here and tap the button below',
+                  detail: 'Once the helper is running, tap "Check connection" and you\'re ready.',
+                },
+              ].map((step) => (
+                <div key={step.num} className="flex gap-3">
+                  <div className="w-6 h-6 rounded-full bg-accent/20 text-accent text-xs font-bold flex items-center justify-center shrink-0 mt-0.5">
+                    {step.num}
+                  </div>
+                  <div className="space-y-0.5">
+                    <p className="text-xs font-medium">{step.title}</p>
+                    <p className="text-xs text-muted-foreground leading-relaxed">{step.detail}</p>
+                    {step.link && (
+                      <a href={step.link.url} target="_blank" rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 text-xs text-accent hover:underline mt-1">
+                        {step.link.label} →
+                      </a>
+                    )}
+                  </div>
+                </div>
+              ))}
             </div>
-            <Button size="sm" variant="outline" onClick={recheckProxy} className="rounded-xl w-full">
-              {proxyOk === null ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" /> : null}
-              {proxyOk ? 'Re-check connection' : 'Check connection'}
+
+            <Button onClick={recheckHelper} className="w-full rounded-xl bg-accent text-accent-foreground">
+              {helperOk === null
+                ? <><Loader2 className="w-3.5 h-3.5 animate-spin mr-2" />Checking...</>
+                : helperOk
+                  ? <><CheckCircle2 className="w-3.5 h-3.5 mr-2" />Connected — check again</>
+                  : <><Wifi className="w-3.5 h-3.5 mr-2" />Check connection</>
+              }
             </Button>
           </div>
 
-          {/* Device list */}
-          {devices.map(d => (
-            <div key={d.id} className="flex items-center gap-3 p-3 rounded-xl bg-card border border-border/50">
-              <div
-                onClick={() => { selectDevice(d.id); setTab('remote'); }}
-                className={`w-2 h-2 rounded-full cursor-pointer ${activeId === d.id ? 'bg-accent' : 'bg-muted-foreground/30'}`}
-              />
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium truncate">{d.name}</p>
-                <p className="text-xs text-muted-foreground">{DEVICE_TYPES.find(t=>t.id===d.type)?.label} · {d.ip}</p>
-              </div>
-              <button
-                onClick={() => selectDevice(d.id)}
-                className={`text-xs px-2 py-1 rounded-lg transition-colors ${activeId === d.id ? 'text-accent bg-accent/10' : 'text-muted-foreground hover:text-foreground'}`}>
-                {activeId === d.id ? 'Active' : 'Use'}
-              </button>
-              <button onClick={() => removeDevice(d.id)} className="text-muted-foreground hover:text-destructive p-1">
-                <Trash2 className="w-3.5 h-3.5" />
-              </button>
+          {/* Saved TVs list */}
+          {devices.length > 0 && (
+            <div className="space-y-2">
+              <p className="text-xs font-medium text-muted-foreground px-1">Your TVs</p>
+              {devices.map(d => (
+                <div key={d.id} className="flex items-center gap-3 p-3 rounded-xl bg-card border border-border/50">
+                  <div
+                    onClick={() => { selectDevice(d.id); setTab('remote'); }}
+                    className={`w-2.5 h-2.5 rounded-full cursor-pointer shrink-0 ${activeId === d.id ? 'bg-accent' : 'bg-muted-foreground/30'}`}
+                  />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium truncate">{d.name}</p>
+                    <p className="text-xs text-muted-foreground">{DEVICE_TYPES.find(t => t.id === d.type)?.label}</p>
+                  </div>
+                  <button
+                    onClick={() => { selectDevice(d.id); setTab('remote'); }}
+                    className={`text-xs px-2 py-1 rounded-lg transition-colors ${activeId === d.id ? 'text-accent bg-accent/10' : 'text-muted-foreground hover:text-foreground'}`}>
+                    {activeId === d.id ? 'Active' : 'Use'}
+                  </button>
+                  <button onClick={() => removeDevice(d.id)} className="text-muted-foreground hover:text-destructive p-1 shrink-0">
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              ))}
             </div>
-          ))}
+          )}
 
-          {/* Add device form */}
+          {/* Add TV form */}
           {!showForm ? (
             <Button onClick={() => setShowForm(true)} className="w-full rounded-xl bg-accent text-accent-foreground">
-              <Plus className="w-4 h-4 mr-2" />Add a device
+              <Plus className="w-4 h-4 mr-2" />Add my TV
             </Button>
           ) : (
-            <div className="rounded-2xl border border-border/50 bg-card p-4 space-y-3">
+            <div className="rounded-2xl border border-border/50 bg-card p-4 space-y-4">
               <div className="flex items-center justify-between">
-                <h3 className="text-sm font-semibold">New device</h3>
-                <button onClick={() => setShowForm(false)}><X className="w-4 h-4 text-muted-foreground" /></button>
+                <h3 className="text-sm font-semibold">Add a TV</h3>
+                <button onClick={() => setShowForm(false)}>
+                  <X className="w-4 h-4 text-muted-foreground" />
+                </button>
               </div>
 
-              {/* Type selector */}
-              <div className="grid grid-cols-3 gap-1.5">
-                {DEVICE_TYPES.map(t => (
-                  <button key={t.id} onClick={() => setFormType(t.id)}
-                    className={`py-2 text-xs rounded-xl border transition-all ${formType === t.id ? 'border-accent bg-accent/10 text-accent' : 'border-border/50 text-muted-foreground hover:border-accent/30'}`}>
-                    {t.label}
-                  </button>
-                ))}
+              {/* Type */}
+              <div>
+                <p className="text-xs text-muted-foreground mb-2">What kind of TV is it?</p>
+                <div className="grid grid-cols-3 gap-1.5">
+                  {DEVICE_TYPES.map(t => (
+                    <button key={t.id} onClick={() => setFormType(t.id)}
+                      className={`py-2.5 text-xs rounded-xl border transition-all ${
+                        formType === t.id
+                          ? 'border-accent bg-accent/10 text-accent font-medium'
+                          : 'border-border/50 text-muted-foreground hover:border-accent/30'
+                      }`}>
+                      {t.label}
+                    </button>
+                  ))}
+                </div>
               </div>
 
+              {/* IP */}
+              <div>
+                <p className="text-xs text-muted-foreground mb-1.5">TV's IP address</p>
+                <Input
+                  placeholder={DEVICE_TYPES.find(t => t.id === formType)?.hint}
+                  value={formIp}
+                  onChange={e => setFormIp(e.target.value)}
+                  className="rounded-xl"
+                  inputMode="numeric"
+                />
+                <div className="mt-2 rounded-xl bg-muted/30 p-2.5 text-xs text-muted-foreground leading-relaxed">
+                  <p className="font-medium text-foreground/70 mb-1">How to find your TV's IP address:</p>
+                  <p>On your TV: go to <strong>Settings → Network → About</strong> (Samsung / LG)</p>
+                  <p>or <strong>Settings → System → About</strong> (Roku)</p>
+                </div>
+              </div>
+
+              {/* Name */}
               <Input
-                placeholder={DEVICE_TYPES.find(t => t.id === formType)?.hint || 'IP address'}
-                value={formIp}
-                onChange={e => setFormIp(e.target.value)}
-                className="rounded-xl"
-              />
-              <Input
-                placeholder="Nickname (optional, e.g. Living Room TV)"
+                placeholder="Give it a name, e.g. Living Room TV (optional)"
                 value={formName}
                 onChange={e => setFormName(e.target.value)}
                 className="rounded-xl"
               />
 
-              <div className="text-xs text-muted-foreground bg-muted/30 rounded-xl p-2.5">
-                Find your TV's IP: Settings → Network → About (Samsung / LG) · Settings → System → About (Roku)
-              </div>
-
               <div className="flex gap-2">
-                <Button size="sm" variant="outline" onClick={testConn} disabled={!formIp.trim() || testing || !proxyOk}
+                <Button size="sm" variant="outline" onClick={testConn}
+                  disabled={!formIp.trim() || testing || !helperOk}
                   className="rounded-xl flex-1">
-                  {testing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Test'}
+                  {testing ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" /> : null}
+                  {testing ? 'Testing...' : 'Test connection'}
                 </Button>
                 <Button size="sm" onClick={addDevice} disabled={!formIp.trim()}
                   className="rounded-xl flex-1 bg-accent text-accent-foreground">
-                  <Check className="w-3.5 h-3.5 mr-1.5" />Add
+                  <Check className="w-3.5 h-3.5 mr-1.5" />Save TV
                 </Button>
               </div>
+
+              {!helperOk && (
+                <p className="text-xs text-amber-400 text-center">
+                  Start the PC Helper first (steps above) to test the connection
+                </p>
+              )}
             </div>
           )}
 
-          {/* Supported devices info */}
+          {/* Supported TVs info */}
           <div className="rounded-2xl border border-border/50 bg-card/50 p-4 space-y-2">
-            <p className="text-xs font-medium text-muted-foreground">Supported devices</p>
-            <div className="space-y-1 text-xs text-muted-foreground">
-              <p><span className="text-foreground">Roku</span> — All Roku players & TVs (via ECP)</p>
-              <p><span className="text-foreground">Samsung Smart TV</span> — 2016+ Tizen TVs (via WebSocket)</p>
-              <p><span className="text-foreground">LG Smart TV</span> — webOS TVs (requires on-screen pairing)</p>
-              <p className="pt-1 text-muted-foreground/60">Chromecast, Fire TV, Apple TV — use their native apps for full control, or cast directly from Chrome.</p>
+            <p className="text-xs font-medium">Which TVs are supported?</p>
+            <div className="space-y-1.5 text-xs text-muted-foreground">
+              <p><span className="text-foreground font-medium">Roku</span> — All Roku sticks, boxes, and Roku TVs</p>
+              <p><span className="text-foreground font-medium">Samsung Smart TV</span> — 2016 and newer Samsung TVs</p>
+              <p><span className="text-foreground font-medium">LG Smart TV</span> — LG webOS TVs (you'll see a pairing request on screen)</p>
+              <p className="pt-1 text-muted-foreground/60">
+                Chromecast, Fire Stick, Apple TV — use their own apps, or use the <strong>Mirror</strong> feature to cast your phone screen to the TV.
+              </p>
             </div>
           </div>
         </div>
