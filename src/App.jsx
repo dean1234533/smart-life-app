@@ -43,6 +43,7 @@ import AdminPanel from '@/pages/AdminPanel';
 import Privacy from '@/pages/Privacy';
 import Terms from '@/pages/Terms';
 import KidsGames from '@/pages/KidsGames';
+import VPN from '@/pages/VPN';
 
 const ADMIN_UID = import.meta.env.VITE_ADMIN_UID || '';
 
@@ -123,6 +124,7 @@ const AuthenticatedApp = () => {
           <Route path="/remote" element={<Remote />} />
           <Route path="/convert" element={<Convert />} />
           <Route path="/kids-games" element={<KidsGames />} />
+          <Route path="/vpn" element={<VPN />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="/admin" element={<AdminPanel />} />
         </Route>

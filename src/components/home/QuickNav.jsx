@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import {
   LayoutGrid, X, FileText, Mic, Calendar, CheckSquare, Clock, Bot,
   Home, Share2, ShoppingCart, Users, DollarSign, ChefHat,
-  MessageSquare, UserCog, BookOpen, Link as LinkIcon, Dumbbell, Tv, Cast, RefreshCw, Gamepad2
+  MessageSquare, UserCog, BookOpen, Link as LinkIcon, Dumbbell, Tv, Cast, RefreshCw, Gamepad2, ShieldCheck
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -28,6 +28,7 @@ const NAV_ITEMS = [
   { label: "Mirror",     icon: Cast,           path: "/mirror" },
   { label: "Convert",    icon: RefreshCw,      path: "/convert" },
   { label: "Kids Games", icon: Gamepad2,       path: "/kids-games" },
+  { label: "VPN",        icon: ShieldCheck,    path: "/vpn" },
 ];
 
 export default function QuickNav() {
