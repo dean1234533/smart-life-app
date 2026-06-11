@@ -2,14 +2,14 @@ import { useState, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { Key, Loader2, Eye, EyeOff, Check,
   LogOut, ArrowLeft, Shield, Bell, Calendar, ExternalLink, Sparkles,
-  Link2, Link2Off, Download, MessageSquare, Mail, Copy, CheckCheck,
+  Link2, Link2Off, Download,
   Cpu, Wifi, ChevronDown, Trash2, FileJson, AlertTriangle
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
-import { signOut, deleteUser, reauthenticateWithCredential, EmailAuthProvider } from "firebase/auth";
+import { signOut, deleteUser } from "firebase/auth";
 import { firebaseAuth, firestore } from "@/lib/firebase";
 import { collection, getDocs, deleteDoc, doc } from "firebase/firestore";
 import { updateUserDoc, calendarEventsService, getOrCreateUser } from "@/lib/firestoreService";
@@ -50,23 +50,6 @@ export default function Settings() {
   const [ollamaResult, setOllamaResult] = useState(null); // { ok, message }
   const [chromeAiStatus, setChromeAiStatus] = useState('checking'); // 'checking'|'readily'|'after-download'|'no'|'unavailable'
 
-  // SMS auto-reply
-  const [smsEnabled, setSmsEnabled] = useState(false);
-  const [twilioSid, setTwilioSid] = useState("");
-  const [twilioToken, setTwilioToken] = useState("");
-  const [twilioPhone, setTwilioPhone] = useState("");
-  const [smsPrompt, setSmsPrompt] = useState("You are a helpful assistant replying to text messages. Keep replies concise and friendly.");
-  const [showTwilioToken, setShowTwilioToken] = useState(false);
-  const [savingSms, setSavingSms] = useState(false);
-  const [smsCopied, setSmsCopied] = useState(false);
-
-  // Email auto-reply
-  const [emailEnabled, setEmailEnabled] = useState(false);
-  const [resendKey, setResendKey] = useState("");
-  const [emailPrompt, setEmailPrompt] = useState("You are a helpful assistant replying to emails. Be polite and concise.");
-  const [showResendKey, setShowResendKey] = useState(false);
-  const [savingEmail, setSavingEmail] = useState(false);
-  const [emailCopied, setEmailCopied] = useState(false);
 
   useEffect(() => {
     checkGoogleCalendarStatus().then(setGoogleConnected);
@@ -88,21 +71,6 @@ export default function Settings() {
     getChromeAIStatus().then(setChromeAiStatus).catch(() => setChromeAiStatus('unavailable'));
   }, []);
 
-  useEffect(() => {
-    if (!uid) return;
-    getOrCreateUser(uid).then((profile) => {
-      const sms = profile?.smsIntegration || {};
-      if (sms.enabled !== undefined) setSmsEnabled(sms.enabled);
-      if (sms.accountSid) setTwilioSid(sms.accountSid);
-      if (sms.authToken) setTwilioToken(sms.authToken);
-      if (sms.fromPhone) setTwilioPhone(sms.fromPhone);
-      if (sms.systemPrompt) setSmsPrompt(sms.systemPrompt);
-      const email = profile?.emailIntegration || {};
-      if (email.enabled !== undefined) setEmailEnabled(email.enabled);
-      if (email.resendApiKey) setResendKey(email.resendApiKey);
-      if (email.systemPrompt) setEmailPrompt(email.systemPrompt);
-    }).catch(() => {});
-  }, [uid]);
 
   const saveApiKey = async () => {
     if (!uid || !apiKey.trim()) return;
@@ -171,65 +139,6 @@ export default function Settings() {
     }
   };
 
-  const saveSmsSettings = async () => {
-    if (!uid) return;
-    setSavingSms(true);
-    const config = { enabled: smsEnabled, accountSid: twilioSid, authToken: twilioToken, fromPhone: twilioPhone, systemPrompt: smsPrompt };
-    try {
-      await updateUserDoc(uid, { smsIntegration: config });
-      const workerUrl = import.meta.env.VITE_SMS_WORKER_URL;
-      if (workerUrl) {
-        const token = await firebaseAuth.currentUser?.getIdToken();
-        const res = await fetch(`${workerUrl}/register`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-          body: JSON.stringify({ ...config, geminiKey: '' }),
-        });
-        if (!res.ok) throw new Error('Worker registration failed');
-      }
-      toast.success('SMS settings saved');
-    } catch (e) {
-      toast.error(e.message || 'Failed to save SMS settings');
-    } finally {
-      setSavingSms(false);
-    }
-  };
-
-  const saveEmailSettings = async () => {
-    if (!uid) return;
-    setSavingEmail(true);
-    const config = { enabled: emailEnabled, resendApiKey: resendKey, systemPrompt: emailPrompt };
-    try {
-      await updateUserDoc(uid, { emailIntegration: config });
-      const workerUrl = import.meta.env.VITE_EMAIL_WORKER_URL;
-      if (workerUrl) {
-        const token = await firebaseAuth.currentUser?.getIdToken();
-        const res = await fetch(`${workerUrl}/register`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-          body: JSON.stringify({ ...config, geminiKey: '' }),
-        });
-        if (!res.ok) throw new Error('Worker registration failed');
-      }
-      toast.success('Email settings saved');
-    } catch (e) {
-      toast.error(e.message || 'Failed to save email settings');
-    } finally {
-      setSavingEmail(false);
-    }
-  };
-
-  const copyWebhookUrl = async (url, setCopied) => {
-    try { await navigator.clipboard.writeText(url); } catch {
-      const el = document.createElement('textarea');
-      el.value = url;
-      el.style.cssText = 'position:fixed;left:-9999px';
-      document.body.appendChild(el); el.select();
-      document.execCommand('copy'); el.remove();
-    }
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
 
   const saveLocalAI = () => {
     try {
@@ -624,116 +533,6 @@ export default function Settings() {
               Manage booking links →
             </Button>
           </div>
-        </section>
-
-        {/* SMS Auto-Reply */}
-        <section className="p-4 rounded-2xl bg-card border border-border/50 space-y-4">
-          <div className="flex items-center gap-2">
-            <MessageSquare className="w-4 h-4 text-accent" />
-            <h2 className="text-sm font-heading font-semibold">SMS Auto-Reply</h2>
-          </div>
-          <p className="text-xs text-muted-foreground">
-            Automatically reply to incoming texts using AI. Requires a Twilio phone number.
-          </p>
-          <div className="flex items-center justify-between">
-            <div>
-              <span className="text-sm">Enable SMS auto-reply</span>
-              <p className="text-xs text-muted-foreground">{smsEnabled ? "On — replying to all incoming texts" : "Off — no messages will be sent"}</p>
-            </div>
-            <Switch checked={smsEnabled} onCheckedChange={setSmsEnabled} />
-          </div>
-          <a href="https://www.twilio.com/try-twilio" target="_blank" rel="noopener noreferrer"
-            className="flex items-center gap-1.5 text-xs text-accent hover:underline w-fit">
-            <ExternalLink className="w-3 h-3" />No account? Sign up for Twilio (free trial includes a phone number)
-          </a>
-          <div className="space-y-2">
-            <Input placeholder="Account SID (ACxxxxxxxx...)" value={twilioSid} onChange={e => setTwilioSid(e.target.value)} className="rounded-xl text-sm" />
-            <div className="relative">
-              <Input type={showTwilioToken ? "text" : "password"} placeholder="Auth Token" value={twilioToken} onChange={e => setTwilioToken(e.target.value)} className="pr-10 rounded-xl text-sm" />
-              <button onClick={() => setShowTwilioToken(!showTwilioToken)} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
-                {showTwilioToken ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-              </button>
-            </div>
-            <Input placeholder="Your Twilio number (e.g. +12125551234)" value={twilioPhone} onChange={e => setTwilioPhone(e.target.value)} className="rounded-xl text-sm" />
-            <textarea
-              value={smsPrompt}
-              onChange={e => setSmsPrompt(e.target.value)}
-              placeholder="AI system prompt for SMS replies..."
-              rows={2}
-              className="w-full resize-none rounded-xl border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-accent/30"
-            />
-          </div>
-          <Button onClick={saveSmsSettings} disabled={savingSms} size="sm" className="rounded-xl bg-accent text-accent-foreground hover:bg-accent/90">
-            {savingSms ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <><Check className="w-3.5 h-3.5 mr-1.5" />Save SMS Settings</>}
-          </Button>
-          {uid && import.meta.env.VITE_SMS_WORKER_URL && (
-            <div className="space-y-1 pt-1 border-t border-border/50">
-              <p className="text-xs text-muted-foreground">Paste this URL into Twilio → Phone Numbers → Messaging → Webhook:</p>
-              <div className="flex items-center gap-2">
-                <code className="flex-1 text-[10px] bg-muted px-2 py-1.5 rounded-lg break-all text-muted-foreground">
-                  {import.meta.env.VITE_SMS_WORKER_URL}/webhook/{uid}
-                </code>
-                <button onClick={() => copyWebhookUrl(`${import.meta.env.VITE_SMS_WORKER_URL}/webhook/${uid}`, setSmsCopied)}
-                  className="shrink-0 p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors">
-                  {smsCopied ? <CheckCheck className="w-4 h-4 text-green-400" /> : <Copy className="w-4 h-4" />}
-                </button>
-              </div>
-            </div>
-          )}
-        </section>
-
-        {/* Email Auto-Reply */}
-        <section className="p-4 rounded-2xl bg-card border border-border/50 space-y-4">
-          <div className="flex items-center gap-2">
-            <Mail className="w-4 h-4 text-accent" />
-            <h2 className="text-sm font-heading font-semibold">Email Auto-Reply</h2>
-          </div>
-          <p className="text-xs text-muted-foreground">
-            Automatically reply to incoming emails using AI. Uses Resend for sending — free tier includes 100 emails/day.
-          </p>
-          <div className="flex items-center justify-between">
-            <div>
-              <span className="text-sm">Enable email auto-reply</span>
-              <p className="text-xs text-muted-foreground">{emailEnabled ? "On — replying to incoming emails" : "Off — no emails will be sent"}</p>
-            </div>
-            <Switch checked={emailEnabled} onCheckedChange={setEmailEnabled} />
-          </div>
-          <a href="https://resend.com/signup" target="_blank" rel="noopener noreferrer"
-            className="flex items-center gap-1.5 text-xs text-accent hover:underline w-fit">
-            <ExternalLink className="w-3 h-3" />No account? Sign up for Resend (100 free emails/day)
-          </a>
-          <div className="space-y-2">
-            <div className="relative">
-              <Input type={showResendKey ? "text" : "password"} placeholder="Resend API Key (re_...)" value={resendKey} onChange={e => setResendKey(e.target.value)} className="pr-10 rounded-xl text-sm" />
-              <button onClick={() => setShowResendKey(!showResendKey)} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
-                {showResendKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-              </button>
-            </div>
-            <textarea
-              value={emailPrompt}
-              onChange={e => setEmailPrompt(e.target.value)}
-              placeholder="AI system prompt for email replies..."
-              rows={2}
-              className="w-full resize-none rounded-xl border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-accent/30"
-            />
-          </div>
-          <Button onClick={saveEmailSettings} disabled={savingEmail} size="sm" className="rounded-xl bg-accent text-accent-foreground hover:bg-accent/90">
-            {savingEmail ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <><Check className="w-3.5 h-3.5 mr-1.5" />Save Email Settings</>}
-          </Button>
-          {uid && import.meta.env.VITE_EMAIL_WORKER_URL && (
-            <div className="space-y-1 pt-1 border-t border-border/50">
-              <p className="text-xs text-muted-foreground">Paste this URL into Resend → Inbound → Webhook URL:</p>
-              <div className="flex items-center gap-2">
-                <code className="flex-1 text-[10px] bg-muted px-2 py-1.5 rounded-lg break-all text-muted-foreground">
-                  {import.meta.env.VITE_EMAIL_WORKER_URL}/webhook/{uid}
-                </code>
-                <button onClick={() => copyWebhookUrl(`${import.meta.env.VITE_EMAIL_WORKER_URL}/webhook/${uid}`, setEmailCopied)}
-                  className="shrink-0 p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors">
-                  {emailCopied ? <CheckCheck className="w-4 h-4 text-green-400" /> : <Copy className="w-4 h-4" />}
-                </button>
-              </div>
-            </div>
-          )}
         </section>
 
         {/* GDPR — Data & Privacy */}
