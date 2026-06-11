@@ -20,7 +20,8 @@ IMPORTANT RULES:
 - If the user asks to see their tasks → call list_tasks
 - If the user mentions shopping, groceries, a meal plan, needing food, or what to buy → call suggest_shopping_items
 - If the user asks to add a specific item to a shopping list → call add_shopping_item
-- For everything else (general questions, advice, facts, health tips, motivation, etc.) → answer directly without tools
+- If the user asks about anything current, real-world, or that needs up-to-date info — news, prices, local businesses, products, events, directions, "how to", "what is", "where can I", "best X near me" → call web_search
+- For general advice, fitness tips, motivation, or things you already know well → answer directly without tools
 
 Always show the full result to the user. Never say "I can't do that." Be warm, encouraging, and thorough.
 Format workouts and recipes clearly with headings, sets/reps, and instructions. Use markdown.`;
@@ -92,6 +93,17 @@ const AGENT_TOOLS = [
         item: { type: 'string', description: 'The item to add, e.g. "milk", "protein powder"' },
       },
       required: ['item'],
+    },
+  },
+  {
+    name: 'web_search',
+    description: 'Search the web for current, real-world information. Use for anything that needs live data: news, prices, local businesses, products, events, how-to guides, facts.',
+    parameters: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: 'The search query, e.g. "best protein powder UK 2024" or "weather Manchester this week"' },
+      },
+      required: ['query'],
     },
   },
   {
@@ -291,6 +303,47 @@ Format it clearly with bold headings and bullet points.`,
         await shoppingListsService.update(uid, listId, { items: updatedItems });
         toast.success(`"${args.item}" added to your shopping list`);
         return { success: true, message: `"${args.item}" has been added to your shopping list.` };
+      }
+      case 'web_search': {
+        setToolStatus(`Searching for "${args.query}"...`);
+        const q = encodeURIComponent(args.query);
+
+        // Try Brave Search first (richer results, needs optional API key)
+        const braveKey = (() => { try { return localStorage.getItem('brave_search_key'); } catch { return null; } })();
+        if (braveKey) {
+          try {
+            const res = await fetch(`https://api.search.brave.com/res/v1/web/search?q=${q}&count=5`, {
+              headers: { Accept: 'application/json', 'Accept-Encoding': 'gzip', 'X-Subscription-Token': braveKey },
+              signal: AbortSignal.timeout(8000),
+            });
+            if (res.ok) {
+              const data = await res.json();
+              const results = (data.web?.results || []).slice(0, 5)
+                .map(r => `**${r.title}**\n${r.description || ''}\n${r.url}`)
+                .join('\n\n');
+              if (results) return { results };
+            }
+          } catch {}
+        }
+
+        // Fallback: DuckDuckGo Instant Answers (free, no key needed)
+        try {
+          const res = await fetch(
+            `https://api.duckduckgo.com/?q=${q}&format=json&no_html=1&skip_disambig=1&no_redirect=1`,
+            { signal: AbortSignal.timeout(8000) }
+          );
+          if (res.ok) {
+            const data = await res.json();
+            const parts = [];
+            if (data.Answer) parts.push(data.Answer);
+            if (data.AbstractText) parts.push(data.AbstractText);
+            if (data.Definition) parts.push(data.Definition);
+            (data.RelatedTopics || []).slice(0, 5).forEach(t => { if (t.Text) parts.push(t.Text); });
+            if (parts.length) return { results: parts.join('\n\n') };
+          }
+        } catch {}
+
+        return { results: 'No search results found. Try rephrasing your question.' };
       }
       case 'suggest_shopping_items': {
         setToolStatus('Building your shopping list...');
