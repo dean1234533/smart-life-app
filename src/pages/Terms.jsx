@@ -49,7 +49,6 @@ export default function Terms() {
               <li>Use the App for any unlawful purpose or in violation of any regulations.</li>
               <li>Upload or transmit harmful, offensive, or illegal content.</li>
               <li>Attempt to reverse-engineer, scrape, or exploit the App's infrastructure.</li>
-              <li>Use the SMS/email auto-reply feature to send spam or unsolicited messages.</li>
               <li>Use the screen-mirroring feature to capture or share content you do not have rights to.</li>
               <li>Misuse the file conversion feature to process copyright-protected material without permission.</li>
             </ul>

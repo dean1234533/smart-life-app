@@ -479,7 +479,7 @@ export default function Settings() {
             className="w-full rounded-xl gap-2"
           >
             {exportingData ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileJson className="w-3.5 h-3.5" />}
-            Export my data (JSON)
+            Export my data
           </Button>
 
           {/* Delete account */}

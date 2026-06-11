@@ -39,7 +39,6 @@ export default function Privacy() {
                 <tr><td className="py-2 pr-4">Device location (GPS, on-device only)</td><td className="py-2 pr-4">Weather on Home screen</td><td className="py-2">Consent (Art. 6(1)(a))</td></tr>
                 <tr><td className="py-2 pr-4">Booking page name &amp; calendar availability</td><td className="py-2 pr-4">Public booking link feature</td><td className="py-2">Contract (Art. 6(1)(b))</td></tr>
                 <tr><td className="py-2 pr-4">AI conversation history (Gemini / local AI)</td><td className="py-2 pr-4">Contextual AI replies</td><td className="py-2">Contract (Art. 6(1)(b))</td></tr>
-                <tr><td className="py-2 pr-4">Twilio / Resend API keys (encrypted at rest)</td><td className="py-2 pr-4">SMS / email auto-reply feature</td><td className="py-2">Contract (Art. 6(1)(b))</td></tr>
                 <tr><td className="py-2 pr-4">WebRTC signalling data (temporary, &lt;1 hr TTL)</td><td className="py-2 pr-4">Screen mirroring handshake</td><td className="py-2">Legitimate interest (Art. 6(1)(f))</td></tr>
               </tbody>
             </table>
@@ -53,7 +52,6 @@ export default function Privacy() {
               <li><strong>Google Gemini API</strong> (Google LLC) — AI processing when local AI is unavailable. Only the text you send is transmitted; see Google's Gemini API privacy terms.</li>
               <li><strong>Open-Meteo</strong> — weather data. No personal data is sent; only your approximate location coordinates.</li>
               <li><strong>Nominatim / OpenStreetMap Foundation</strong> — reverse geocoding. Only coordinates are sent.</li>
-              <li><strong>Twilio / Resend</strong> — used only if you enable SMS / email auto-reply and provide your own API keys.</li>
             </ul>
             <p className="mt-2">Your data is <strong>not sold</strong> to any third party.</p>
           </section>
