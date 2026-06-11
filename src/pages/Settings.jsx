@@ -16,6 +16,7 @@ import { updateUserDoc, getOrCreateUser } from "@/lib/firestoreService";
 import { useCurrentUid } from "@/hooks/useCurrentUid";
 import { useUserPrefs } from "@/hooks/useUserPrefs";
 import { connectGoogleCalendar, disconnectGoogleCalendar, checkGoogleCalendarStatus } from "@/services/googleCalendarService";
+import { notificationsSupported, notificationPermission, requestPermission, subscribeToPush, unsubscribeFromPush, isPushSubscribed } from "@/services/notificationService";
 import { BACKGROUNDS } from "@/components/layout/AnimatedBackground";
 
 const ADMIN_UID = import.meta.env.VITE_ADMIN_UID || "";
@@ -30,6 +31,7 @@ export default function Settings() {
   const [showKey, setShowKey] = useState(false);
   const [savingKey, setSavingKey] = useState(false);
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
+  const [notifLoading, setNotifLoading] = useState(false);
   const [googleConnected, setGoogleConnected] = useState(false);
   const [connectingGoogle, setConnectingGoogle] = useState(false);
   // GDPR
@@ -48,6 +50,8 @@ export default function Settings() {
       toast.success('Google Calendar connected!');
       window.history.replaceState({}, '', '/settings');
     }
+    // Reflect current push subscription state
+    isPushSubscribed().then(setNotificationsEnabled);
   }, []);
 
 
@@ -89,17 +93,32 @@ export default function Settings() {
     toast.success("Google Calendar disconnected");
   };
 
-  const requestNotifications = async () => {
-    if (!("Notification" in window)) {
-      toast.error("Notifications not supported in this browser");
+  const toggleNotifications = async (enable) => {
+    if (!notificationsSupported()) {
+      toast.error("Notifications not supported in this browser. Install the app first.");
       return;
     }
-    const permission = await Notification.requestPermission();
-    if (permission === "granted") {
-      setNotificationsEnabled(true);
-      toast.success("Notifications enabled!");
-    } else {
-      toast.error("Notification permission denied");
+    setNotifLoading(true);
+    try {
+      if (enable) {
+        if (notificationPermission() === 'denied') {
+          toast.error("Notifications are blocked. Enable them in your phone's browser settings.");
+          return;
+        }
+        const granted = await requestPermission();
+        if (!granted) { toast.error("Permission denied"); return; }
+        const idToken = await firebaseAuth.currentUser?.getIdToken();
+        const ok = await subscribeToPush(idToken);
+        if (ok) { setNotificationsEnabled(true); toast.success("Notifications enabled! You'll be alerted for bookings and due tasks."); }
+        else toast.error("Could not subscribe — check that VAPID key is configured.");
+      } else {
+        const idToken = await firebaseAuth.currentUser?.getIdToken();
+        await unsubscribeFromPush(idToken);
+        setNotificationsEnabled(false);
+        toast.success("Notifications disabled");
+      }
+    } finally {
+      setNotifLoading(false);
     }
   };
 
@@ -297,12 +316,22 @@ export default function Settings() {
         <section className="p-4 rounded-2xl bg-card border border-border/50 space-y-3">
           <div className="flex items-center gap-2">
             <Bell className="w-4 h-4 text-accent" />
-            <h2 className="text-sm font-heading font-semibold">Push Notifications</h2>
+            <h2 className="text-sm font-heading font-semibold">Notifications</h2>
           </div>
-          <p className="text-xs text-muted-foreground">Get notified when a new booking is made.</p>
+          <p className="text-xs text-muted-foreground">
+            Get notified for new bookings and tasks due today. Install the app to your home screen first for best results.
+          </p>
           <div className="flex items-center justify-between">
-            <span className="text-sm">Booking notifications</span>
-            <Switch checked={notificationsEnabled} onCheckedChange={() => requestNotifications()} />
+            <div>
+              <span className="text-sm">Push notifications</span>
+              <p className="text-[11px] text-muted-foreground mt-0.5">
+                {notificationsEnabled ? "Active — you'll receive booking and task alerts" : "Off"}
+              </p>
+            </div>
+            {notifLoading
+              ? <Loader2 className="w-4 h-4 animate-spin text-accent" />
+              : <Switch checked={notificationsEnabled} onCheckedChange={toggleNotifications} />
+            }
           </div>
         </section>
 

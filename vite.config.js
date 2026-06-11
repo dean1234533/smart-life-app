@@ -13,6 +13,8 @@ export default defineConfig({
       // We already have public/manifest.json — don't let the plugin overwrite it
       manifest: false,
       workbox: {
+        maximumFileSizeToCacheInBytes: 4 * 1024 * 1024, // 4 MiB
+        importScripts: ['/push-handler.js'],
         // Precache all built assets (JS/CSS chunks, HTML, icons, fonts)
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2}'],
 

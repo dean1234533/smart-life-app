@@ -44,7 +44,6 @@ import VPN from '@/pages/VPN';
 
 const ADMIN_UID = import.meta.env.VITE_ADMIN_UID || '';
 
-
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isAuthenticated, user } = useAuth();
   const [needsApiKey, setNeedsApiKey] = useState(false);
@@ -55,6 +54,10 @@ const AuthenticatedApp = () => {
       if (!isLoadingAuth) setApiKeyChecked(true);
       return;
     }
+    // Fire task reminders once on login/startup
+    import('@/services/notificationService').then(({ checkTaskReminders }) => {
+      checkTaskReminders(user.uid);
+    });
     const checkApiKey = async () => {
       if (user.uid === ADMIN_UID) { setApiKeyChecked(true); return; }
       try {

@@ -3,8 +3,9 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import {
   BookOpen, ArrowLeft, Search, Sparkles, Loader2,
-  ChevronDown, ChevronRight, Users, CheckCircle2, Trash2
+  ChevronDown, ChevronRight, Users, CheckCircle2, Trash2, Download
 } from "lucide-react";
+import jsPDF from "jspdf";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -14,6 +15,77 @@ import { meetingSummariesService } from "@/lib/firestoreService";
 import { useCurrentUid } from "@/hooks/useCurrentUid";
 import { invokeGemini } from "@/services/geminiService";
 import { getOrCreateUser } from "@/lib/firestoreService";
+
+function writeSummaryToPdf(doc, s, y, pageH, margin, lineH) {
+  const addLine = (text, opts = {}) => {
+    if (y + lineH > pageH - margin) { doc.addPage(); y = margin; }
+    const { bold, color, size } = opts;
+    doc.setFontSize(size || 10);
+    doc.setTextColor(...(color || [30, 30, 30]));
+    doc.setFont("helvetica", bold ? "bold" : "normal");
+    const lines = doc.splitTextToSize(text, 170);
+    doc.text(lines, margin, y);
+    y += lines.length * lineH + (opts.after || 0);
+    return y;
+  };
+
+  const dateStr = s.date ? String(s.date).slice(0, 10) : "";
+  y = addLine(s.title || "Untitled", { bold: true, size: 13, color: [79, 70, 229], after: 1 });
+  if (dateStr) y = addLine(dateStr, { size: 9, color: [120, 120, 120], after: 3 });
+  if (s.attendees?.length) y = addLine(`Attendees: ${s.attendees.join(", ")}`, { size: 9, color: [100, 100, 100], after: 3 });
+  if (s.summary) y = addLine(s.summary, { after: 4 });
+
+  if (s.decisions?.length) {
+    y = addLine("Decisions", { bold: true, size: 10, color: [79, 70, 229], after: 2 });
+    for (const d of s.decisions) y = addLine(`• ${d}`, { after: 1 });
+    y += 2;
+  }
+  if (s.followUpActions?.length) {
+    y = addLine("Follow-ups", { bold: true, size: 10, color: [79, 70, 229], after: 2 });
+    for (const f of s.followUpActions) y = addLine(`• ${f}`, { after: 1 });
+    y += 2;
+  }
+  return y + 6;
+}
+
+function exportAllToPdf(summaries) {
+  if (!summaries.length) return;
+  const doc = new jsPDF({ unit: "mm", format: "a4" });
+  const margin = 20;
+  const pageH = doc.internal.pageSize.getHeight();
+  const lineH = 5.5;
+  let y = margin;
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(18);
+  doc.setTextColor(79, 70, 229);
+  doc.text("Meeting Notes", margin, y);
+  y += 10;
+  doc.setFontSize(9);
+  doc.setTextColor(140, 140, 140);
+  doc.setFont("helvetica", "normal");
+  doc.text(`Exported ${new Date().toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })} · ${summaries.length} meeting${summaries.length > 1 ? "s" : ""}`, margin, y);
+  y += 12;
+
+  for (const s of summaries) {
+    if (y > pageH - margin * 2) { doc.addPage(); y = margin; }
+    y = writeSummaryToPdf(doc, s, y, pageH, margin, lineH);
+    doc.setDrawColor(220, 220, 220);
+    doc.line(margin, y - 3, 190, y - 3);
+    y += 2;
+  }
+
+  doc.save("meeting-notes.pdf");
+}
+
+function exportSingleToPdf(s) {
+  const doc = new jsPDF({ unit: "mm", format: "a4" });
+  const margin = 20;
+  const pageH = doc.internal.pageSize.getHeight();
+  writeSummaryToPdf(doc, s, margin, pageH, margin, 5.5);
+  const filename = `${(s.title || "meeting").replace(/[^a-z0-9]/gi, "-").toLowerCase()}.pdf`;
+  doc.save(filename);
+}
 
 export default function MeetingSummaries() {
   const navigate = useNavigate();
@@ -93,7 +165,13 @@ Return the index of the best match and the relevant excerpt.`,
         <button onClick={() => navigate("/")} className="text-muted-foreground hover:text-foreground">
           <ArrowLeft className="w-5 h-5" />
         </button>
-        <h1 className="text-2xl font-display font-bold">Meeting Summaries</h1>
+        <h1 className="text-2xl font-display font-bold flex-1">Meeting Summaries</h1>
+        {summaries.length > 0 && (
+          <Button size="sm" variant="outline" onClick={() => exportAllToPdf(summaries)}
+            className="rounded-xl gap-1.5 text-xs shrink-0">
+            <Download className="w-3.5 h-3.5" />Export PDF
+          </Button>
+        )}
       </div>
 
       {/* AI Knowledge Base Search */}
@@ -165,6 +243,10 @@ Return the index of the best match and the relevant excerpt.`,
                     </div>
                   </div>
                   {isOpen ? <ChevronDown className="w-4 h-4 text-muted-foreground" /> : <ChevronRight className="w-4 h-4 text-muted-foreground" />}
+                  <button onClick={(e) => { e.stopPropagation(); exportSingleToPdf(s); }}
+                    className="text-muted-foreground hover:text-accent ml-1">
+                    <Download className="w-4 h-4" />
+                  </button>
                   <button onClick={(e) => { e.stopPropagation(); deleteMutation.mutate(s.id); }}
                     className="text-muted-foreground hover:text-destructive ml-1">
                     <Trash2 className="w-4 h-4" />

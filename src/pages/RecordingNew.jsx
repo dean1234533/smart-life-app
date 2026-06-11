@@ -16,7 +16,7 @@ import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { storage } from "@/lib/firebase";
 import {
   recordingsService, meetingSummariesService, followUpsService, expensesService,
-  contactsService, calendarEventsService, getOrCreateUser
+  contactsService, calendarEventsService, tasksService, getOrCreateUser
 } from "@/lib/firestoreService";
 import { invokeGemini, transcribeAudio } from "@/services/geminiService";
 import { useCurrentUid } from "@/hooks/useCurrentUid";
@@ -65,12 +65,14 @@ export default function RecordingNew() {
   const [pendingFollowUps, setPendingFollowUps] = useState(null);
   const [pendingExpenses, setPendingExpenses] = useState(null);
   const [pendingContacts, setPendingContacts] = useState(null);
+  const [pendingTasks, setPendingTasks] = useState(null);
   const [pendingSummary, setPendingSummary] = useState(null);
 
   const [savingCalendar, setSavingCalendar] = useState(false);
   const [savingFollowUps, setSavingFollowUps] = useState(false);
   const [savingExpenses, setSavingExpenses] = useState(false);
   const [savingContacts, setSavingContacts] = useState(false);
+  const [savingTasks, setSavingTasks] = useState(false);
   const [savingSummary, setSavingSummary] = useState(false);
 
   const mediaRecorderRef = useRef(null);
@@ -310,6 +312,11 @@ Extract ALL of the following:
             await contactsService.create(uid, { name: c.name, phone: c.phone || "", email: c.email || "" }).catch(() => {});
           toast.success(`${analysis.new_contacts.length} contact(s) saved`);
         }
+        if (analysis.extracted_actions?.length) {
+          for (const action of analysis.extracted_actions)
+            await tasksService.create(uid, { title: action.action, description: "", status: "pending", priority: action.priority || "medium", due_date: action.due_date || null, linkedSummaryId: rec?.id || null }).catch(() => {});
+          toast.success(`${analysis.extracted_actions.length} task(s) saved`);
+        }
         if (analysis.ai_summary) {
           await meetingSummariesService.create(uid, {
             title: analysis.suggested_title || title || "Meeting",
@@ -325,6 +332,7 @@ Extract ALL of the following:
         if (analysis.follow_up_actions?.length) setPendingFollowUps(analysis.follow_up_actions);
         if (analysis.expenses?.length) setPendingExpenses(analysis.expenses);
         if (analysis.new_contacts?.length) setPendingContacts(analysis.new_contacts);
+        if (analysis.extracted_actions?.length) setPendingTasks(analysis.extracted_actions);
       }
 
       if (!prefs.autoScan) {
@@ -408,6 +416,24 @@ Extract ALL of the following:
     toast.success(`${pendingContacts.length} contact${pendingContacts.length > 1 ? "s" : ""} saved!`);
     setPendingContacts(null);
     setSavingContacts(false);
+  };
+
+  const acceptTasks = async () => {
+    if (!uid || !pendingTasks) return;
+    setSavingTasks(true);
+    for (const action of pendingTasks) {
+      await tasksService.create(uid, {
+        title: action.action,
+        description: "",
+        status: "pending",
+        priority: action.priority || "medium",
+        due_date: action.due_date || null,
+        linkedSummaryId: savedRecordingId || null,
+      }).catch(() => {});
+    }
+    toast.success(`${pendingTasks.length} task${pendingTasks.length > 1 ? "s" : ""} saved!`);
+    setPendingTasks(null);
+    setSavingTasks(false);
   };
 
   const acceptSummary = async () => {
@@ -534,6 +560,15 @@ Extract ALL of the following:
                 onAccept={acceptContacts} onDismiss={() => setPendingContacts(null)} loading={savingContacts}>
                 {pendingContacts.map((c, i) => (
                   <p key={i} className="text-sm text-muted-foreground mt-1">• {c.name}{c.phone ? ` · ${c.phone}` : ""}{c.email ? ` · ${c.email}` : ""}</p>
+                ))}
+              </ConfirmCard>
+            )}
+
+            {pendingTasks && (
+              <ConfirmCard icon={CheckCircle2} colorClass="text-accent" title={`Save ${pendingTasks.length} Task${pendingTasks.length > 1 ? "s" : ""}?`}
+                onAccept={acceptTasks} onDismiss={() => setPendingTasks(null)} loading={savingTasks}>
+                {pendingTasks.map((t, i) => (
+                  <p key={i} className="text-sm text-muted-foreground mt-1">• {t.action}{t.due_date ? ` (due ${t.due_date})` : ""}</p>
                 ))}
               </ConfirmCard>
             )}

@@ -83,6 +83,61 @@ async function getAccessToken(uid, env) {
   return tokens.access_token;
 }
 
+// ── VAPID Web Push helpers ──────────────────────────────────────────────────
+
+function b64urlDec(str) {
+  const pad = '='.repeat((4 - str.length % 4) % 4);
+  return Uint8Array.from(atob(str.replace(/-/g, '+').replace(/_/g, '/') + pad), c => c.charCodeAt(0));
+}
+
+function b64urlEnc(buf) {
+  return btoa(String.fromCharCode(...new Uint8Array(buf)))
+    .replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
+}
+
+async function vapidAuthHeader(endpoint, pubKeyB64, privKeyB64, contact) {
+  const audience = new URL(endpoint).origin;
+  const exp = Math.floor(Date.now() / 1000) + 43200;
+  const encB64 = s => btoa(s).replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
+  const hdr = encB64(JSON.stringify({ typ: 'JWT', alg: 'ES256' }));
+  const pay = encB64(JSON.stringify({ aud: audience, exp, sub: contact }));
+  const sigInput = `${hdr}.${pay}`;
+
+  const pubBytes = b64urlDec(pubKeyB64);
+  const jwk = {
+    kty: 'EC', crv: 'P-256',
+    x: b64urlEnc(pubBytes.slice(1, 33).buffer),
+    y: b64urlEnc(pubBytes.slice(33, 65).buffer),
+    d: privKeyB64,
+  };
+  const key = await crypto.subtle.importKey('jwk', jwk, { name: 'ECDSA', namedCurve: 'P-256' }, false, ['sign']);
+  const sig = await crypto.subtle.sign({ name: 'ECDSA', hash: 'SHA-256' }, key, new TextEncoder().encode(sigInput));
+  return `vapid t=${sigInput}.${b64urlEnc(sig)},k=${pubKeyB64}`;
+}
+
+async function sendWebPush(subscription, payload, env) {
+  if (!env.VAPID_PUBLIC_KEY || !env.VAPID_PRIVATE_KEY) return false;
+  const { endpoint } = subscription;
+  const contact = `mailto:${env.VAPID_SUBJECT || 'admin@smart-life-app.pages.dev'}`;
+  try {
+    const auth = await vapidAuthHeader(endpoint, env.VAPID_PUBLIC_KEY, env.VAPID_PRIVATE_KEY, contact);
+    const body = JSON.stringify(payload);
+    const resp = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        Authorization: auth,
+        'Content-Type': 'application/json',
+        'Content-Encoding': 'aesgcm',
+        TTL: '86400',
+      },
+      body,
+    });
+    return resp.ok || resp.status === 201;
+  } catch { return false; }
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+
 function corsHeaders(env) {
   return {
     'Access-Control-Allow-Origin': env.APP_ORIGIN || 'https://smart-life-app.pages.dev',
@@ -222,6 +277,22 @@ export default {
         return json(await resp.json(), 201, env);
       }
 
+      // ── Store push subscription (authenticated) ────────────────────────────
+      if (path === '/push/subscription' && request.method === 'PUT') {
+        const uid = await verifyFirebaseToken(extractIdToken(request), projectId);
+        const sub = await request.json().catch(() => null);
+        if (!sub?.endpoint) return json({ error: 'Invalid subscription' }, 400, env);
+        await env.GOOGLE_TOKENS.put(`push_sub:${uid}`, JSON.stringify(sub));
+        return json({ ok: true }, 200, env);
+      }
+
+      // ── Remove push subscription (authenticated) ────────────────────────
+      if (path === '/push/subscription' && request.method === 'DELETE') {
+        const uid = await verifyFirebaseToken(extractIdToken(request), projectId);
+        await env.GOOGLE_TOKENS.delete(`push_sub:${uid}`);
+        return json({ ok: true }, 200, env);
+      }
+
       // Public: get busy times (no auth — booking page calls this)
       if (path.startsWith('/calendar/freebusy/') && request.method === 'GET') {
         const uid = decodeURIComponent(path.split('/')[3] || '');
@@ -263,7 +334,22 @@ export default {
             body: JSON.stringify(eventBody),
           });
           if (!resp.ok) return json({ error: 'Failed to create calendar event' }, 500, env);
-          return json(await resp.json(), 201, env);
+          const created = await resp.json();
+
+          // Notify the owner via push if they have a subscription
+          const pushSub = await env.GOOGLE_TOKENS.get(`push_sub:${body.ownerUid}`, 'json').catch(() => null);
+          if (pushSub) {
+            const startTime = new Date(body.start).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+            const startDate = new Date(body.start).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
+            await sendWebPush(pushSub, {
+              title: 'New Booking!',
+              body: `${body.summary || 'Someone'} booked ${startDate} at ${startTime}`,
+              url: '/booking-links',
+              tag: 'booking',
+            }, env).catch(() => {});
+          }
+
+          return json(created, 201, env);
         } catch (err) {
           return json({ error: err.message }, 500, env);
         }

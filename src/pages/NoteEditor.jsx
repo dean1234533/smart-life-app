@@ -14,7 +14,8 @@ import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
 import { extractAndSaveCalendarEvents } from "@/utils/extractCalendarEvents";
 import {
-  notesService, shoppingListsService, recipesService, mapSessionsService, getOrCreateUser
+  notesService, shoppingListsService, recipesService, mapSessionsService,
+  tasksService, contactsService, expensesService, getOrCreateUser
 } from "@/lib/firestoreService";
 import { invokeGemini } from "@/services/geminiService";
 import { getNearbyStores, buildDirectionsUrl } from "@/services/googleMapsService";
@@ -137,23 +138,22 @@ export default function NoteEditor() {
     setNearbyStores(null);
 
     try {
-      const prompt = `Analyze this note and extract structured information:
+      const prompt = `Analyze this note and extract ALL structured information across every category:
 
 Note content: "${content}"
 ${title ? `Title: "${title}"` : ""}
 
-Extract:
+Extract everything present:
 1. A brief AI summary (1-2 sentences)
 2. Auto-detect the primary intent (shopping, meeting, task, reminder, general, decision, promise, meal_plan)
-3. If intent is "shopping" or "meal_plan", extract a list of specific items/ingredients needed
-4. If intent is "meal_plan", generate 2-3 recipes with ingredients and instructions
-5. Extract any action items with due dates if mentioned
-6. Identify people mentioned
-7. Detect any events or dates mentioned
-8. Generate relevant tags
-9. Provide smart suggestions (e.g., create calendar event, add reminder, create shopping list)
-
-For suggestions, provide confidence scores (0-1).`;
+3. Shopping or ingredient items needed
+4. If meal plan, generate 2-3 recipes with ingredients and instructions
+5. Action items / tasks with due dates and priority
+6. People and contacts mentioned (with phone/email if stated)
+7. Expenses mentioned (e.g. "lunch cost £30", "paid $50")
+8. Dates and events mentioned
+9. Tags
+10. Smart suggestions with confidence scores`;
 
       const schema = {
         type: "object",
@@ -188,6 +188,29 @@ For suggestions, provide confidence scores (0-1).`;
           },
           related_people: { type: "array", items: { type: "string" } },
           related_events: { type: "array", items: { type: "string" } },
+          new_contacts: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                name: { type: "string" },
+                phone: { type: "string" },
+                email: { type: "string" },
+                notes: { type: "string" }
+              }
+            }
+          },
+          expenses: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                description: { type: "string" },
+                amount: { type: "number" },
+                currency: { type: "string" }
+              }
+            }
+          },
           tags: { type: "array", items: { type: "string" } },
           ai_suggestions: {
             type: "array",
@@ -207,6 +230,45 @@ For suggestions, provide confidence scores (0-1).`;
       const result = await invokeGemini(prompt, schema, uid, userApiKey);
       setAiResult(result);
       if (!title && result.suggested_title) setTitle(result.suggested_title);
+
+      // Auto-save tasks
+      if (result.extracted_actions?.length) {
+        for (const action of result.extracted_actions) {
+          await tasksService.create(uid, {
+            title: action.action,
+            description: "",
+            status: "pending",
+            priority: action.priority || "medium",
+            due_date: action.due_date || null,
+          }).catch(() => {});
+        }
+        toast.success(`${result.extracted_actions.length} task${result.extracted_actions.length > 1 ? "s" : ""} saved`);
+      }
+
+      // Auto-save contacts
+      if (result.new_contacts?.length) {
+        for (const c of result.new_contacts) {
+          await contactsService.create(uid, {
+            name: c.name,
+            phone: c.phone || "",
+            email: c.email || "",
+            notes: c.notes || "",
+          }).catch(() => {});
+        }
+        toast.success(`${result.new_contacts.length} contact${result.new_contacts.length > 1 ? "s" : ""} saved`);
+      }
+
+      // Auto-save expenses
+      if (result.expenses?.length) {
+        for (const exp of result.expenses) {
+          await expensesService.create(uid, {
+            description: exp.description,
+            amount: exp.amount,
+            currency: exp.currency || "GBP",
+          }).catch(() => {});
+        }
+        toast.success(`${result.expenses.length} expense${result.expenses.length > 1 ? "s" : ""} saved`);
+      }
 
       if ((result.detected_intent === "shopping" || result.detected_intent === "meal_plan") && result.shopping_items?.length) {
         setShoppingSuggestions(result.shopping_items);
@@ -304,6 +366,8 @@ Extract:
             recipes: { type: "array", items: { type: "object", properties: { title: { type: "string" }, ingredients: { type: "array", items: { type: "string" } }, instructions: { type: "string" } } } },
             extracted_actions: { type: "array", items: { type: "object", properties: { action: { type: "string" }, due_date: { type: "string" }, priority: { type: "string" }, status: { type: "string" } } } },
             related_people: { type: "array", items: { type: "string" } },
+            new_contacts: { type: "array", items: { type: "object", properties: { name: { type: "string" }, phone: { type: "string" }, email: { type: "string" }, notes: { type: "string" } } } },
+            expenses: { type: "array", items: { type: "object", properties: { description: { type: "string" }, amount: { type: "number" }, currency: { type: "string" } } } },
             tags: { type: "array", items: { type: "string" } },
             ai_suggestions: { type: "array", items: { type: "object", properties: { type: { type: "string" }, suggestion: { type: "string" }, confidence: { type: "number" } } } },
             suggested_title: { type: "string" },
@@ -313,6 +377,27 @@ Extract:
         const result = await invokeGemini(prompt, schema, uid, userApiKey);
         if (!title && result.suggested_title) setTitle(result.suggested_title);
         setAiResult(result);
+
+        // Auto-save tasks
+        if (result.extracted_actions?.length) {
+          for (const action of result.extracted_actions)
+            await tasksService.create(uid, { title: action.action, description: "", status: "pending", priority: action.priority || "medium", due_date: action.due_date || null }).catch(() => {});
+          toast.success(`${result.extracted_actions.length} task${result.extracted_actions.length > 1 ? "s" : ""} saved`);
+        }
+
+        // Auto-save contacts
+        if (result.new_contacts?.length) {
+          for (const c of result.new_contacts)
+            await contactsService.create(uid, { name: c.name, phone: c.phone || "", email: c.email || "", notes: c.notes || "" }).catch(() => {});
+          toast.success(`${result.new_contacts.length} contact${result.new_contacts.length > 1 ? "s" : ""} saved`);
+        }
+
+        // Auto-save expenses
+        if (result.expenses?.length) {
+          for (const exp of result.expenses)
+            await expensesService.create(uid, { description: exp.description, amount: exp.amount, currency: exp.currency || "GBP" }).catch(() => {});
+          toast.success(`${result.expenses.length} expense${result.expenses.length > 1 ? "s" : ""} saved`);
+        }
 
         // Auto-accept shopping list
         if ((result.detected_intent === "shopping" || result.detected_intent === "meal_plan") && result.shopping_items?.length) {

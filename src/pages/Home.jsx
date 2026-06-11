@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import InstallBanner from "../components/InstallBanner";
 import DailyBriefing from "../components/home/DailyBriefing";
 import QuickActions from "../components/home/QuickActions";
 import SmartSuggestions from "../components/home/SmartSuggestions";
@@ -46,11 +47,13 @@ export default function Home() {
   const pendingTasks = tasks.filter((t) => t.status === "pending");
 
   return (
-    <div className="px-4 pt-12 space-y-6">
-      <div className="flex justify-end items-center gap-2">
+    <div className="pt-12 space-y-6">
+      <div className="flex justify-end items-center gap-2 px-4">
         <QuickNav />
         <ThemePicker uid={uid} />
       </div>
+      <InstallBanner />
+      <div className="px-4 space-y-6">
       <DailyBriefing
         user={user}
         taskCount={pendingTasks.length}
@@ -63,6 +66,7 @@ export default function Home() {
       <QuickActions />
       <SmartSuggestions />
       <RecentActivity notes={notes} recordings={recordings} tasks={tasks} />
+      </div>
     </div>
   );
 }
