@@ -3,7 +3,7 @@ import { useNavigate, Link } from "react-router-dom";
 import { Key, Loader2, Eye, EyeOff, Check,
   LogOut, ArrowLeft, Shield, Bell, Calendar, ExternalLink, Sparkles,
   Link2, Link2Off, Download,
-  Cpu, Wifi, ChevronDown, Trash2, FileJson, AlertTriangle
+  Cpu, RefreshCw, Trash2, FileJson, AlertTriangle
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,7 +13,7 @@ import { signOut, deleteUser } from "firebase/auth";
 import { firebaseAuth, firestore } from "@/lib/firebase";
 import { collection, getDocs, deleteDoc, doc } from "firebase/firestore";
 import { updateUserDoc, calendarEventsService, getOrCreateUser } from "@/lib/firestoreService";
-import { getChromeAIStatus, testOllamaConnection } from "@/services/geminiService";
+import { autoDetectLocalAI, getChromeAIStatus } from "@/services/geminiService";
 import { useCurrentUid } from "@/hooks/useCurrentUid";
 import { useUserPrefs } from "@/hooks/useUserPrefs";
 import { connectGoogleCalendar, disconnectGoogleCalendar, checkGoogleCalendarStatus } from "@/services/googleCalendarService";
@@ -42,13 +42,8 @@ export default function Settings() {
   const [deleteConfirm, setDeleteConfirm] = useState('');
   const [showDeleteSection, setShowDeleteSection] = useState(false);
 
-  // Local AI
-  const [ollamaUrl, setOllamaUrl] = useState('');
-  const [ollamaModel, setOllamaModel] = useState('llama3.2');
-  const [ollamaExpanded, setOllamaExpanded] = useState(false);
-  const [testingOllama, setTestingOllama] = useState(false);
-  const [ollamaResult, setOllamaResult] = useState(null); // { ok, message }
-  const [chromeAiStatus, setChromeAiStatus] = useState('checking'); // 'checking'|'readily'|'after-download'|'no'|'unavailable'
+  // Local AI — 'checking' | 'active' | 'none'
+  const [localAiStatus, setLocalAiStatus] = useState('checking');
 
 
   useEffect(() => {
@@ -59,16 +54,20 @@ export default function Settings() {
       toast.success('Google Calendar connected!');
       window.history.replaceState({}, '', '/settings');
     }
-    // Load saved local AI settings from localStorage (device-specific)
-    try {
-      const savedUrl   = localStorage.getItem('local_ai_url')   || '';
-      const savedModel = localStorage.getItem('local_ai_model') || 'llama3.2';
-      if (savedUrl) setOllamaUrl(savedUrl);
-      setOllamaModel(savedModel);
-      if (savedUrl) setOllamaExpanded(true);
-    } catch {}
-    // Check Chrome built-in AI
-    getChromeAIStatus().then(setChromeAiStatus).catch(() => setChromeAiStatus('unavailable'));
+    // Check for any local AI — Ollama or Chrome built-in
+    const detectAI = async () => {
+      setLocalAiStatus('checking');
+      try {
+        const [ollamaResult, chromeStatus] = await Promise.all([
+          autoDetectLocalAI(),
+          getChromeAIStatus(),
+        ]);
+        setLocalAiStatus(ollamaResult.found || chromeStatus === 'readily' ? 'active' : 'none');
+      } catch {
+        setLocalAiStatus('none');
+      }
+    };
+    detectAI();
   }, []);
 
 
@@ -140,37 +139,16 @@ export default function Settings() {
   };
 
 
-  const saveLocalAI = () => {
+  const recheckLocalAI = async () => {
+    setLocalAiStatus('checking');
     try {
-      if (ollamaUrl.trim()) {
-        localStorage.setItem('local_ai_url', ollamaUrl.trim());
-        localStorage.setItem('local_ai_model', ollamaModel.trim() || 'llama3.2');
-        toast.success('Local AI saved — it will be used before any cloud API');
-      } else {
-        localStorage.removeItem('local_ai_url');
-        localStorage.removeItem('local_ai_model');
-        toast.success('Local AI cleared');
-      }
+      const [ollamaResult, chromeStatus] = await Promise.all([
+        autoDetectLocalAI(),
+        getChromeAIStatus(),
+      ]);
+      setLocalAiStatus(ollamaResult.found || chromeStatus === 'readily' ? 'active' : 'none');
     } catch {
-      toast.error('Failed to save — storage might be blocked');
-    }
-  };
-
-  const handleTestOllama = async () => {
-    if (!ollamaUrl.trim()) return;
-    setTestingOllama(true);
-    setOllamaResult(null);
-    try {
-      const { models, found } = await testOllamaConnection(ollamaUrl.trim(), ollamaModel.trim());
-      if (found) {
-        setOllamaResult({ ok: true, message: `Connected. Model "${ollamaModel}" is ready.` });
-      } else {
-        setOllamaResult({ ok: true, message: `Connected. Available models: ${models.slice(0, 5).join(', ') || 'none yet'}.` });
-      }
-    } catch (e) {
-      setOllamaResult({ ok: false, message: e.message || 'Could not reach Ollama' });
-    } finally {
-      setTestingOllama(false);
+      setLocalAiStatus('none');
     }
   };
 
@@ -339,101 +317,50 @@ export default function Settings() {
         </section>
 
         {/* Local AI */}
-        <section className="p-4 rounded-2xl bg-card border border-border/50 space-y-4">
+        <section className="p-4 rounded-2xl bg-card border border-border/50 space-y-3">
           <div className="flex items-center gap-2">
             <Cpu className="w-4 h-4 text-accent" />
             <h2 className="text-sm font-heading font-semibold">Local AI</h2>
             <span className="ml-auto text-[10px] bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full">Free · No credits</span>
           </div>
-          <p className="text-xs text-muted-foreground">
-            When available, the app automatically uses AI running on your own device — no internet credits needed. It checks every time you open the app.
-          </p>
 
-          {/* Chrome built-in AI status */}
-          <div className="rounded-xl bg-muted/30 p-3 flex items-center justify-between gap-3">
-            <div className="flex items-center gap-2">
-              <div className="w-7 h-7 rounded-lg bg-blue-500/20 flex items-center justify-center shrink-0">
-                <span className="text-sm">C</span>
-              </div>
+          {localAiStatus === 'checking' && (
+            <div className="flex items-center gap-2 text-xs text-muted-foreground py-1">
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />Checking for local AI…
+            </div>
+          )}
+
+          {localAiStatus === 'active' && (
+            <div className="rounded-xl bg-emerald-500/10 border border-emerald-500/20 p-3 flex items-center gap-3">
+              <Check className="w-4 h-4 text-emerald-400 shrink-0" />
               <div>
-                <p className="text-sm font-medium">Chrome AI</p>
-                <p className="text-xs text-muted-foreground">Built into Chrome on your device</p>
+                <p className="text-sm font-medium text-emerald-400">Free AI is active</p>
+                <p className="text-xs text-muted-foreground">Running on your device — no internet credits used</p>
               </div>
             </div>
-            {chromeAiStatus === 'checking' && <Loader2 className="w-4 h-4 animate-spin text-muted-foreground shrink-0" />}
-            {chromeAiStatus === 'readily' && (
-              <span className="text-[10px] bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full shrink-0 flex items-center gap-1">
-                <Check className="w-3 h-3" />Active
-              </span>
-            )}
-            {(chromeAiStatus === 'after-download' || chromeAiStatus === 'no' || chromeAiStatus === 'unavailable') && (
-              <span className="text-[10px] bg-muted text-muted-foreground px-2 py-0.5 rounded-full shrink-0">Not available</span>
-            )}
-          </div>
+          )}
 
-          {/* Ollama auto-detect status */}
-          <div className="rounded-xl bg-muted/30 p-3 flex items-center justify-between gap-3">
-            <div className="flex items-center gap-2">
-              <div className="w-7 h-7 rounded-lg bg-purple-500/20 flex items-center justify-center shrink-0">
-                <Wifi className="w-3.5 h-3.5 text-purple-400" />
-              </div>
-              <div>
-                <p className="text-sm font-medium">Ollama</p>
-                <p className="text-xs text-muted-foreground">
-                  {ollamaUrl ? `Detected at ${ollamaUrl}` : 'Not detected on this device'}
+          {localAiStatus === 'none' && (
+            <div className="space-y-3">
+              <div className="rounded-xl bg-muted/30 p-3">
+                <p className="text-sm">No local AI found</p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Install Ollama on your computer and start it — the app will detect it automatically.
                 </p>
               </div>
+              <a href="https://ollama.com" target="_blank" rel="noopener noreferrer"
+                className="flex items-center gap-1.5 text-sm text-accent hover:underline w-fit">
+                <ExternalLink className="w-3.5 h-3.5" />Download Ollama (free)
+              </a>
             </div>
-            {ollamaUrl
-              ? <span className="text-[10px] bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full shrink-0 flex items-center gap-1"><Check className="w-3 h-3" />Active</span>
-              : <span className="text-[10px] bg-muted text-muted-foreground px-2 py-0.5 rounded-full shrink-0">Not running</span>
-            }
-          </div>
+          )}
 
-          {/* Manual override — collapsed by default */}
-          <div className="rounded-xl border border-border/50 overflow-hidden">
-            <button
-              onClick={() => setOllamaExpanded(!ollamaExpanded)}
-              className="w-full flex items-center justify-between px-3 py-2.5 text-xs text-muted-foreground hover:text-foreground hover:bg-muted/30 transition-colors"
-            >
-              <span>Manual setup (advanced)</span>
-              <ChevronDown className={`w-4 h-4 transition-transform ${ollamaExpanded ? 'rotate-180' : ''}`} />
-            </button>
-            {ollamaExpanded && (
-              <div className="border-t border-border/50 p-3 space-y-3">
-                <p className="text-xs text-muted-foreground">
-                  Install <a href="https://ollama.com" target="_blank" rel="noopener noreferrer" className="text-accent hover:underline">Ollama</a> on your computer, start it, and the app will detect it automatically next time. Or enter a custom address below.
-                </p>
-                <Input
-                  placeholder="Custom address (e.g. http://192.168.1.5:11434)"
-                  value={ollamaUrl}
-                  onChange={e => { setOllamaUrl(e.target.value); setOllamaResult(null); }}
-                  className="rounded-xl text-sm"
-                />
-                <Input
-                  placeholder="Model (e.g. llama3.2)"
-                  value={ollamaModel}
-                  onChange={e => { setOllamaModel(e.target.value); setOllamaResult(null); }}
-                  className="rounded-xl text-sm"
-                />
-                {ollamaResult && (
-                  <p className={`text-xs px-2 py-1.5 rounded-lg ${ollamaResult.ok ? 'bg-emerald-500/10 text-emerald-400' : 'bg-destructive/10 text-destructive'}`}>
-                    {ollamaResult.message}
-                  </p>
-                )}
-                <div className="flex gap-2">
-                  <Button size="sm" variant="outline" onClick={handleTestOllama}
-                    disabled={!ollamaUrl.trim() || testingOllama} className="rounded-xl flex-1">
-                    {testingOllama ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Test'}
-                  </Button>
-                  <Button size="sm" onClick={saveLocalAI}
-                    className="rounded-xl flex-1 bg-accent text-accent-foreground hover:bg-accent/90">
-                    <Check className="w-3.5 h-3.5 mr-1.5" />Save
-                  </Button>
-                </div>
-              </div>
-            )}
-          </div>
+          <Button size="sm" variant="ghost" onClick={recheckLocalAI}
+            disabled={localAiStatus === 'checking'}
+            className="w-full rounded-xl text-xs text-muted-foreground hover:text-foreground gap-1.5">
+            <RefreshCw className="w-3 h-3" />
+            {localAiStatus === 'checking' ? 'Checking…' : 'Check again'}
+          </Button>
         </section>
 
         <section className="p-4 rounded-2xl bg-card border border-border/50 space-y-3">
