@@ -1,16 +1,19 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { Key, Loader2, Eye, EyeOff, Check,
   LogOut, ArrowLeft, Shield, Bell, Calendar, ExternalLink, Sparkles,
-  Link2, Link2Off, Download, MessageSquare, Mail, Copy, CheckCheck
+  Link2, Link2Off, Download, MessageSquare, Mail, Copy, CheckCheck,
+  Cpu, Wifi, ChevronDown, Trash2, FileJson, AlertTriangle
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
-import { signOut } from "firebase/auth";
-import { firebaseAuth } from "@/lib/firebase";
+import { signOut, deleteUser, reauthenticateWithCredential, EmailAuthProvider } from "firebase/auth";
+import { firebaseAuth, firestore } from "@/lib/firebase";
+import { collection, getDocs, deleteDoc, doc } from "firebase/firestore";
 import { updateUserDoc, calendarEventsService, getOrCreateUser } from "@/lib/firestoreService";
+import { getChromeAIStatus, testOllamaConnection } from "@/services/geminiService";
 import { useCurrentUid } from "@/hooks/useCurrentUid";
 import { useUserPrefs } from "@/hooks/useUserPrefs";
 import { connectGoogleCalendar, disconnectGoogleCalendar, checkGoogleCalendarStatus } from "@/services/googleCalendarService";
@@ -32,6 +35,20 @@ export default function Settings() {
   const [googleConnected, setGoogleConnected] = useState(false);
   const [connectingGoogle, setConnectingGoogle] = useState(false);
   const [exportingICS, setExportingICS] = useState(false);
+
+  // GDPR
+  const [exportingData, setExportingData] = useState(false);
+  const [deletingAccount, setDeletingAccount] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState('');
+  const [showDeleteSection, setShowDeleteSection] = useState(false);
+
+  // Local AI
+  const [ollamaUrl, setOllamaUrl] = useState('');
+  const [ollamaModel, setOllamaModel] = useState('llama3.2');
+  const [ollamaExpanded, setOllamaExpanded] = useState(false);
+  const [testingOllama, setTestingOllama] = useState(false);
+  const [ollamaResult, setOllamaResult] = useState(null); // { ok, message }
+  const [chromeAiStatus, setChromeAiStatus] = useState('checking'); // 'checking'|'readily'|'after-download'|'no'|'unavailable'
 
   // SMS auto-reply
   const [smsEnabled, setSmsEnabled] = useState(false);
@@ -59,6 +76,16 @@ export default function Settings() {
       toast.success('Google Calendar connected!');
       window.history.replaceState({}, '', '/settings');
     }
+    // Load saved local AI settings from localStorage (device-specific)
+    try {
+      const savedUrl   = localStorage.getItem('local_ai_url')   || '';
+      const savedModel = localStorage.getItem('local_ai_model') || 'llama3.2';
+      if (savedUrl) setOllamaUrl(savedUrl);
+      setOllamaModel(savedModel);
+      if (savedUrl) setOllamaExpanded(true);
+    } catch {}
+    // Check Chrome built-in AI
+    getChromeAIStatus().then(setChromeAiStatus).catch(() => setChromeAiStatus('unavailable'));
   }, []);
 
   useEffect(() => {
@@ -204,6 +231,111 @@ export default function Settings() {
     setTimeout(() => setCopied(false), 2000);
   };
 
+  const saveLocalAI = () => {
+    try {
+      if (ollamaUrl.trim()) {
+        localStorage.setItem('local_ai_url', ollamaUrl.trim());
+        localStorage.setItem('local_ai_model', ollamaModel.trim() || 'llama3.2');
+        toast.success('Local AI saved — it will be used before any cloud API');
+      } else {
+        localStorage.removeItem('local_ai_url');
+        localStorage.removeItem('local_ai_model');
+        toast.success('Local AI cleared');
+      }
+    } catch {
+      toast.error('Failed to save — storage might be blocked');
+    }
+  };
+
+  const handleTestOllama = async () => {
+    if (!ollamaUrl.trim()) return;
+    setTestingOllama(true);
+    setOllamaResult(null);
+    try {
+      const { models, found } = await testOllamaConnection(ollamaUrl.trim(), ollamaModel.trim());
+      if (found) {
+        setOllamaResult({ ok: true, message: `Connected. Model "${ollamaModel}" is ready.` });
+      } else {
+        setOllamaResult({ ok: true, message: `Connected. Available models: ${models.slice(0, 5).join(', ') || 'none yet'}.` });
+      }
+    } catch (e) {
+      setOllamaResult({ ok: false, message: e.message || 'Could not reach Ollama' });
+    } finally {
+      setTestingOllama(false);
+    }
+  };
+
+  const handleExportData = async () => {
+    if (!uid) return;
+    setExportingData(true);
+    try {
+      const profile = await getOrCreateUser(uid);
+      const SUBCOLLECTIONS = [
+        'notes', 'tasks', 'calendarEvents', 'recordings', 'contacts',
+        'expenses', 'recipes', 'shoppingLists', 'meetingSummaries', 'followUps',
+        'bookingLinks', 'bookings', 'availability', 'memories', 'timelineEvents',
+        'chatHistory', 'workouts', 'nutrition',
+      ];
+      const data = { profile, collections: {} };
+      await Promise.all(
+        SUBCOLLECTIONS.map(async (col) => {
+          const snap = await getDocs(collection(firestore, 'users', uid, col));
+          data.collections[col] = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        })
+      );
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `smart-life-export-${new Date().toISOString().slice(0, 10)}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success('Your data has been exported');
+    } catch (e) {
+      toast.error(`Export failed: ${e.message}`);
+    } finally {
+      setExportingData(false);
+    }
+  };
+
+  const handleDeleteAccount = async () => {
+    if (!uid || deleteConfirm !== 'DELETE') return;
+    setDeletingAccount(true);
+    try {
+      // Delete all Firestore subcollections
+      const SUBCOLLECTIONS = [
+        'notes', 'tasks', 'calendarEvents', 'recordings', 'contacts',
+        'expenses', 'recipes', 'shoppingLists', 'meetingSummaries', 'followUps',
+        'bookingLinks', 'bookings', 'availability', 'memories', 'timelineEvents',
+        'chatHistory', 'workouts', 'nutrition', 'rawTranscriptions',
+        'aiProcessingLogs', 'dismissedActions', 'suggestedItems', 'mapSessions',
+      ];
+      await Promise.all(
+        SUBCOLLECTIONS.map(async (col) => {
+          const snap = await getDocs(collection(firestore, 'users', uid, col));
+          await Promise.all(snap.docs.map(d => deleteDoc(d.ref)));
+        })
+      );
+      // Delete top-level user doc
+      await deleteDoc(doc(firestore, 'users', uid));
+      // Delete Firebase Auth account
+      const user = firebaseAuth.currentUser;
+      if (user) await deleteUser(user);
+      // Clear localStorage
+      localStorage.clear();
+      toast.success('Account deleted. Goodbye.');
+      navigate('/login');
+    } catch (e) {
+      if (e.code === 'auth/requires-recent-login') {
+        toast.error('Please sign out and sign back in, then try deleting your account again.');
+      } else {
+        toast.error(`Delete failed: ${e.message}`);
+      }
+    } finally {
+      setDeletingAccount(false);
+    }
+  };
+
   const handleSignOut = async () => {
     try {
       await signOut(firebaseAuth);
@@ -294,6 +426,130 @@ export default function Settings() {
               <p className="text-xs text-muted-foreground">{prefs.autoScan ? "On — saves everything automatically" : "Off — manual analysis only"}</p>
             </div>
             <Switch checked={prefs.autoScan} onCheckedChange={toggleAutoScan} />
+          </div>
+        </section>
+
+        {/* Local AI */}
+        <section className="p-4 rounded-2xl bg-card border border-border/50 space-y-4">
+          <div className="flex items-center gap-2">
+            <Cpu className="w-4 h-4 text-accent" />
+            <h2 className="text-sm font-heading font-semibold">Local AI (No Credits)</h2>
+            <span className="ml-auto text-[10px] bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full">Free</span>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Run AI directly on this device — no cloud API credits needed. When configured, local AI is always tried first before any paid service.
+          </p>
+
+          {/* Chrome built-in AI */}
+          <div className="rounded-xl border border-border/50 p-3 space-y-2">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="w-6 h-6 rounded-lg bg-blue-500/20 flex items-center justify-center">
+                  <span className="text-xs">C</span>
+                </div>
+                <div>
+                  <p className="text-sm font-medium">Chrome Built-in AI</p>
+                  <p className="text-xs text-muted-foreground">Gemini Nano — runs fully on-device</p>
+                </div>
+              </div>
+              {chromeAiStatus === 'checking' && <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />}
+              {chromeAiStatus === 'readily' && (
+                <span className="text-[10px] bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full flex items-center gap-1">
+                  <Check className="w-3 h-3" />Ready
+                </span>
+              )}
+              {chromeAiStatus === 'after-download' && (
+                <span className="text-[10px] bg-yellow-500/20 text-yellow-400 px-2 py-0.5 rounded-full">Needs download</span>
+              )}
+              {(chromeAiStatus === 'no' || chromeAiStatus === 'unavailable') && (
+                <span className="text-[10px] bg-muted text-muted-foreground px-2 py-0.5 rounded-full">Not available</span>
+              )}
+            </div>
+            {chromeAiStatus === 'after-download' && (
+              <p className="text-xs text-yellow-400/80">
+                Open <strong>chrome://flags</strong> and enable <em>Prompt API for Gemini Nano</em>, then restart Chrome.
+              </p>
+            )}
+            {(chromeAiStatus === 'no' || chromeAiStatus === 'unavailable') && (
+              <p className="text-xs text-muted-foreground">
+                Requires Chrome 127+ on desktop with Gemini Nano support. Not available in this browser.
+              </p>
+            )}
+          </div>
+
+          {/* Ollama */}
+          <div className="rounded-xl border border-border/50 overflow-hidden">
+            <button
+              onClick={() => setOllamaExpanded(!ollamaExpanded)}
+              className="w-full flex items-center justify-between p-3 hover:bg-muted/30 transition-colors"
+            >
+              <div className="flex items-center gap-2">
+                <div className="w-6 h-6 rounded-lg bg-purple-500/20 flex items-center justify-center">
+                  <Wifi className="w-3.5 h-3.5 text-purple-400" />
+                </div>
+                <div className="text-left">
+                  <p className="text-sm font-medium">Ollama (Local Server)</p>
+                  <p className="text-xs text-muted-foreground">
+                    {ollamaUrl ? `${ollamaUrl} · ${ollamaModel}` : 'Run any open model on your own machine'}
+                  </p>
+                </div>
+              </div>
+              <ChevronDown className={`w-4 h-4 text-muted-foreground transition-transform ${ollamaExpanded ? 'rotate-180' : ''}`} />
+            </button>
+
+            {ollamaExpanded && (
+              <div className="border-t border-border/50 p-3 space-y-3">
+                <div className="space-y-2">
+                  <Input
+                    placeholder="Ollama URL (e.g. http://localhost:11434)"
+                    value={ollamaUrl}
+                    onChange={e => { setOllamaUrl(e.target.value); setOllamaResult(null); }}
+                    className="rounded-xl text-sm"
+                  />
+                  <Input
+                    placeholder="Model name (e.g. llama3.2, mistral, phi3.5)"
+                    value={ollamaModel}
+                    onChange={e => { setOllamaModel(e.target.value); setOllamaResult(null); }}
+                    className="rounded-xl text-sm"
+                  />
+                </div>
+
+                {ollamaResult && (
+                  <p className={`text-xs px-2 py-1.5 rounded-lg ${ollamaResult.ok ? 'bg-emerald-500/10 text-emerald-400' : 'bg-destructive/10 text-destructive'}`}>
+                    {ollamaResult.message}
+                  </p>
+                )}
+
+                <div className="flex gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={handleTestOllama}
+                    disabled={!ollamaUrl.trim() || testingOllama}
+                    className="rounded-xl flex-1"
+                  >
+                    {testingOllama ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Test connection'}
+                  </Button>
+                  <Button
+                    size="sm"
+                    onClick={saveLocalAI}
+                    className="rounded-xl flex-1 bg-accent text-accent-foreground hover:bg-accent/90"
+                  >
+                    <Check className="w-3.5 h-3.5 mr-1.5" />Save
+                  </Button>
+                </div>
+
+                <div className="bg-muted/30 rounded-xl p-2.5 space-y-1">
+                  <p className="text-[11px] font-medium text-muted-foreground">Setup guide</p>
+                  <p className="text-[10px] text-muted-foreground leading-relaxed">
+                    1. Install Ollama from <a href="https://ollama.com" target="_blank" rel="noopener noreferrer" className="text-accent hover:underline">ollama.com</a><br />
+                    2. Run: <code className="bg-muted px-1 rounded text-[10px]">OLLAMA_ORIGINS=* ollama serve</code><br />
+                    3. Pull a model: <code className="bg-muted px-1 rounded text-[10px]">ollama pull llama3.2</code><br />
+                    4. Enter the URL above and tap Save
+                  </p>
+                </div>
+              </div>
+            )}
           </div>
         </section>
 
@@ -506,6 +762,71 @@ export default function Settings() {
           )}
         </section>
 
+        {/* GDPR — Data & Privacy */}
+        <section className="p-4 rounded-2xl bg-card border border-border/50 space-y-4">
+          <div className="flex items-center gap-2">
+            <Shield className="w-4 h-4 text-accent" />
+            <h2 className="text-sm font-heading font-semibold">Data &amp; Privacy</h2>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Under UK GDPR you have the right to access, export, and erase all your data.
+          </p>
+
+          {/* Export */}
+          <Button
+            size="sm" variant="outline"
+            onClick={handleExportData} disabled={exportingData}
+            className="w-full rounded-xl gap-2"
+          >
+            {exportingData ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileJson className="w-3.5 h-3.5" />}
+            Export my data (JSON)
+          </Button>
+
+          {/* Delete account */}
+          {!showDeleteSection ? (
+            <Button
+              size="sm" variant="ghost"
+              onClick={() => setShowDeleteSection(true)}
+              className="w-full rounded-xl text-destructive hover:bg-destructive/10 gap-2"
+            >
+              <Trash2 className="w-3.5 h-3.5" />Delete my account
+            </Button>
+          ) : (
+            <div className="space-y-3 rounded-xl border border-destructive/30 p-3">
+              <div className="flex items-start gap-2">
+                <AlertTriangle className="w-4 h-4 text-destructive shrink-0 mt-0.5" />
+                <p className="text-xs text-destructive leading-relaxed">
+                  This permanently deletes all your data — notes, tasks, recordings, calendar events, contacts, and more. This cannot be undone.
+                </p>
+              </div>
+              <p className="text-xs text-muted-foreground">Type <strong>DELETE</strong> to confirm:</p>
+              <Input
+                value={deleteConfirm}
+                onChange={e => setDeleteConfirm(e.target.value)}
+                placeholder="DELETE"
+                className="rounded-xl text-sm border-destructive/30 focus:ring-destructive/30"
+              />
+              <div className="flex gap-2">
+                <Button
+                  size="sm" variant="ghost"
+                  onClick={() => { setShowDeleteSection(false); setDeleteConfirm(''); }}
+                  className="flex-1 rounded-xl"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={handleDeleteAccount}
+                  disabled={deleteConfirm !== 'DELETE' || deletingAccount}
+                  className="flex-1 rounded-xl bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                >
+                  {deletingAccount ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Delete account'}
+                </Button>
+              </div>
+            </div>
+          )}
+        </section>
+
         {isAdmin && (
           <section className="p-4 rounded-2xl bg-card border border-accent/30">
             <div className="flex items-center gap-2 mb-3">
@@ -525,6 +846,13 @@ export default function Settings() {
             <LogOut className="w-4 h-4" />Sign Out
           </Button>
         </section>
+
+        {/* Legal footer */}
+        <div className="flex justify-center gap-4 pb-2 text-xs text-muted-foreground">
+          <Link to="/privacy" className="hover:text-foreground transition-colors">Privacy Policy</Link>
+          <span>·</span>
+          <Link to="/terms" className="hover:text-foreground transition-colors">Terms of Service</Link>
+        </div>
       </div>
     </div>
   );

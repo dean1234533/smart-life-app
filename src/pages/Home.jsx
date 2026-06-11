@@ -8,6 +8,7 @@ import QuickNav from "../components/home/QuickNav";
 import { useAuth } from "@/lib/AuthContext";
 import { tasksService, notesService, recordingsService, memoriesService } from "@/lib/firestoreService";
 import { useCurrentUid } from "@/hooks/useCurrentUid";
+import { useWeather } from "@/hooks/useWeather";
 
 export default function Home() {
   const uid = useCurrentUid();
@@ -41,6 +42,7 @@ export default function Home() {
     initialData: [],
   });
 
+  const { weather, loading: weatherLoading, error: weatherError } = useWeather();
   const pendingTasks = tasks.filter((t) => t.status === "pending");
 
   return (
@@ -54,6 +56,9 @@ export default function Home() {
         taskCount={pendingTasks.length}
         noteCount={notes.length}
         memoryCount={memories.length}
+        weather={weather}
+        weatherLoading={weatherLoading}
+        weatherError={weatherError}
       />
       <QuickActions />
       <SmartSuggestions />

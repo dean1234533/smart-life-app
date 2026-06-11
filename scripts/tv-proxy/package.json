@@ -1,0 +1,12 @@
+{
+  "name": "smart-life-tv-proxy",
+  "version": "1.1.0",
+  "description": "Local proxy that lets the Smart Life PWA control TVs on your home network",
+  "main": "proxy.js",
+  "scripts": {
+    "start": "node proxy.js"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}

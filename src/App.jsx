@@ -35,8 +35,14 @@ import Expenses from '@/pages/Expenses';
 import FollowUps from '@/pages/FollowUps';
 import BookingLinks from '@/pages/BookingLinks';
 import Fitness from '@/pages/Fitness';
+import Remote from '@/pages/Remote';
+import Mirror from '@/pages/Mirror';
+import Convert from '@/pages/Convert';
 import Settings from '@/pages/Settings';
 import AdminPanel from '@/pages/AdminPanel';
+import Privacy from '@/pages/Privacy';
+import Terms from '@/pages/Terms';
+import KidsGames from '@/pages/KidsGames';
 
 const ADMIN_UID = import.meta.env.VITE_ADMIN_UID || '';
 
@@ -114,13 +120,20 @@ const AuthenticatedApp = () => {
           <Route path="/follow-ups" element={<FollowUps />} />
           <Route path="/booking-links" element={<BookingLinks />} />
           <Route path="/fitness" element={<Fitness />} />
+          <Route path="/remote" element={<Remote />} />
+          <Route path="/convert" element={<Convert />} />
+          <Route path="/kids-games" element={<KidsGames />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="/admin" element={<AdminPanel />} />
         </Route>
       </Route>
 
+      {/* Public routes — no auth required (opened on TV, shared devices, etc.) */}
+      <Route path="/mirror" element={<Mirror />} />
       <Route path="/book" element={<BookingPage />} />
       <Route path="/book/:slug" element={<BookingPage />} />
+      <Route path="/privacy" element={<Privacy />} />
+      <Route path="/terms" element={<Terms />} />
 
       <Route path="*" element={<PageNotFound />} />
     </Routes>

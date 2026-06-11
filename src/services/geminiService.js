@@ -15,6 +15,68 @@ const MISTRAL_MODEL    = 'mistral-small-latest';
 const TOGETHER_MODEL   = 'meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo';
 const OPENROUTER_MODEL = 'mistralai/mistral-7b-instruct:free';
 
+// ── Local AI helpers ──────────────────────────────────────────────────────────
+
+function hasChromeAI() {
+  return typeof window !== 'undefined' && !!window.ai?.languageModel;
+}
+
+function hasOllama() {
+  try { return !!localStorage.getItem('local_ai_url'); } catch { return false; }
+}
+
+// Chrome's built-in Gemini Nano — zero credits, runs fully on-device.
+async function callChromeAI(prompt, jsonSchema) {
+  if (!window.ai?.languageModel) throw new Error('Chrome AI not available');
+  const caps = await window.ai.languageModel.capabilities();
+  if (caps.available === 'no') throw new Error('Chrome AI model not available on this device');
+  const session = await window.ai.languageModel.create({});
+  try {
+    const text = jsonSchema
+      ? `${prompt}\n\nRespond ONLY with valid JSON (no markdown fences) matching:\n${JSON.stringify(jsonSchema)}`
+      : prompt;
+    const result = await session.prompt(text);
+    if (jsonSchema) { try { return JSON.parse(result); } catch { return {}; } }
+    return result;
+  } finally {
+    session.destroy();
+  }
+}
+
+// Ollama local server — runs models on the user's own machine / home server.
+async function callOllama(prompt, jsonSchema) {
+  const baseUrl = localStorage.getItem('local_ai_url');
+  const model   = localStorage.getItem('local_ai_model') || 'llama3.2';
+  if (!baseUrl) throw new Error('Ollama not configured');
+  const userContent = jsonSchema
+    ? `${prompt}\n\nRespond ONLY with valid JSON (no markdown fences) matching:\n${JSON.stringify(jsonSchema)}`
+    : prompt;
+  const res = await fetch(`${baseUrl.replace(/\/$/, '')}/api/chat`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ model, messages: [{ role: 'user', content: userContent }], stream: false }),
+    signal: AbortSignal.timeout(60000),
+  });
+  if (!res.ok) {
+    const e = new Error(`Ollama error ${res.status}`);
+    e.status = res.status;
+    throw e;
+  }
+  const data = await res.json();
+  const text = data.message?.content || '';
+  if (jsonSchema) { try { return JSON.parse(text); } catch { return {}; } }
+  return text;
+}
+
+// Returns the two local providers as [sentinel, fn] tuples ready for runWithFallback.
+// Using boolean true/false as the "key" — truthy means the provider is available.
+function localProviders(prompt, jsonSchema) {
+  return [
+    [hasChromeAI() || '', () => callChromeAI(prompt, jsonSchema)],
+    [hasOllama()   || '', () => callOllama(prompt, jsonSchema)],
+  ];
+}
+
 // ── Provider callers ─────────────────────────────────────────────────────────
 
 async function callGemini(apiKey, prompt, jsonSchema = null, parts = null) {
@@ -110,9 +172,10 @@ function shouldFallthrough(err) {
 }
 
 // Tries each [key, fn] pair in order, skipping missing keys, falling through on recoverable errors.
+// The "key" can be any truthy sentinel — local providers use boolean true.
 async function runWithFallback(providers) {
   const available = providers.filter(([key]) => !!key);
-  if (available.length === 0) throw new Error('No AI keys configured — add at least one key in your .env');
+  if (available.length === 0) throw new Error('No AI configured — add a local AI in Settings or an API key');
   for (let i = 0; i < available.length; i++) {
     const [key, fn] = available[i];
     const isLast = i === available.length - 1;
@@ -128,8 +191,12 @@ async function runWithFallback(providers) {
 // ── Public API ────────────────────────────────────────────────────────────────
 
 export async function invokeGemini(prompt, jsonSchema = null, uid = '', userApiKey = '') {
+  // Local providers always come first — they use the device's own resources, no credits consumed.
+  const local = localProviders(prompt, jsonSchema);
+
   if (uid === ADMIN_UID) {
     return runWithFallback([
+      ...local,
       [ADMIN_GEMINI_KEY,     (k) => callGemini(k, prompt, jsonSchema)],
       [ADMIN_GROQ_KEY,       (k) => callGroq(k, prompt, jsonSchema)],
       [ADMIN_CEREBRAS_KEY,   (k) => callCerebras(k, prompt, jsonSchema)],
@@ -138,8 +205,11 @@ export async function invokeGemini(prompt, jsonSchema = null, uid = '', userApiK
       [ADMIN_OPENROUTER_KEY, (k) => callOpenRouter(k, prompt, jsonSchema)],
     ]);
   }
-  if (!userApiKey) throw new Error('No API key configured');
-  return callGemini(userApiKey, prompt, jsonSchema);
+
+  return runWithFallback([
+    ...local,
+    ...(userApiKey ? [[userApiKey, (k) => callGemini(k, prompt, jsonSchema)]] : []),
+  ]);
 }
 
 // Agent function calling — Gemini-only (other providers don't support this API format).
@@ -176,20 +246,23 @@ export async function invokeGeminiAgent(contents, toolDeclarations, systemPrompt
       // Gemini down/over-quota — fall back to plain text via the chain (no tool calls)
     }
   }
-  // Fallback: strip tool declarations and get a plain text response from any available provider
-  if (uid === ADMIN_UID) {
-    const lastUserMsg = [...contents].reverse().find(c => c.role === 'user');
-    const text = lastUserMsg?.parts?.find(p => p.text)?.text || '';
-    const plainText = await runWithFallback([
+
+  // Plain-text fallback: strip tool declarations, use any available provider
+  const lastUserMsg = [...contents].reverse().find(c => c.role === 'user');
+  const text = lastUserMsg?.parts?.find(p => p.text)?.text || '';
+  const local = localProviders(text, null);
+
+  const plainText = await runWithFallback([
+    ...local,
+    ...(uid === ADMIN_UID ? [
       [ADMIN_GROQ_KEY,       (k) => callGroq(k, text)],
       [ADMIN_CEREBRAS_KEY,   (k) => callCerebras(k, text)],
       [ADMIN_MISTRAL_KEY,    (k) => callMistral(k, text)],
       [ADMIN_TOGETHER_KEY,   (k) => callTogether(k, text)],
       [ADMIN_OPENROUTER_KEY, (k) => callOpenRouter(k, text)],
-    ]);
-    return { role: 'model', parts: [{ text: plainText }] };
-  }
-  throw new Error('No API key configured');
+    ] : []),
+  ]);
+  return { role: 'model', parts: [{ text: plainText }] };
 }
 
 export async function transcribeAudio(audioBlob, uid = '', userApiKey = '') {
@@ -220,4 +293,26 @@ export async function transcribeAudio(audioBlob, uid = '', userApiKey = '') {
 
   if (!userApiKey) throw new Error('No API key configured');
   return callGemini(userApiKey, '', null, parts);
+}
+
+// ── Exported helpers for Settings UI ─────────────────────────────────────────
+
+export async function getChromeAIStatus() {
+  if (!window.ai?.languageModel) return 'unavailable';
+  try {
+    const caps = await window.ai.languageModel.capabilities();
+    return caps.available; // 'readily' | 'after-download' | 'no'
+  } catch {
+    return 'unavailable';
+  }
+}
+
+export async function testOllamaConnection(url, model) {
+  const base = url.replace(/\/$/, '');
+  const res = await fetch(`${base}/api/tags`, { signal: AbortSignal.timeout(8000) });
+  if (!res.ok) throw new Error(`Server responded with ${res.status}`);
+  const data = await res.json();
+  const models = data.models?.map(m => m.name) || [];
+  const found = models.some(m => m.startsWith(model.split(':')[0]));
+  return { models, found };
 }

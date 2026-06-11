@@ -71,12 +71,26 @@ async function callGemini(apiKey, systemPrompt, history, userMessage) {
 
 // ── CORS helper ─────────────────────────────────────────────────────────────
 
+const ALLOWED_ORIGIN = 'https://smart-life-app.pages.dev';
+
 function cors(response, origin) {
+  const allowed = origin === ALLOWED_ORIGIN ? origin : ALLOWED_ORIGIN;
   const headers = new Headers(response.headers);
-  headers.set('Access-Control-Allow-Origin', origin || '*');
+  headers.set('Access-Control-Allow-Origin', allowed);
   headers.set('Access-Control-Allow-Methods', 'GET,POST,DELETE,OPTIONS');
   headers.set('Access-Control-Allow-Headers', 'Content-Type,Authorization');
+  headers.set('Vary', 'Origin');
   return new Response(response.body, { status: response.status, headers });
+}
+
+// ── Rate limiting (KV, 20 req/min per UID) ───────────────────────────────────
+
+async function checkRateLimit(kv, uid) {
+  const key = `ratelimit:${uid}:${Math.floor(Date.now() / 60000)}`;
+  const count = parseInt((await kv.get(key)) || '0', 10);
+  if (count >= 20) return false;
+  await kv.put(key, String(count + 1), { expirationTtl: 120 });
+  return true;
 }
 
 // ── Main handler ─────────────────────────────────────────────────────────────
@@ -103,6 +117,10 @@ export default {
         return cors(new Response(`Auth failed: ${e.message}`, { status: 401 }), origin);
       }
 
+      if (!(await checkRateLimit(env.SMS_CONFIGS, uid))) {
+        return cors(new Response('Too Many Requests', { status: 429 }), origin);
+      }
+
       const config = await request.json();
       await env.SMS_CONFIGS.put(uid, JSON.stringify({
         enabled: !!config.enabled,
@@ -125,6 +143,9 @@ export default {
       let uid;
       try { uid = await verifyFirebaseToken(token, env.FIREBASE_PROJECT_ID); } catch (e) {
         return cors(new Response(`Auth failed: ${e.message}`, { status: 401 }), origin);
+      }
+      if (!(await checkRateLimit(env.SMS_CONFIGS, uid))) {
+        return cors(new Response('Too Many Requests', { status: 429 }), origin);
       }
       await env.SMS_CONFIGS.delete(uid);
       return cors(new Response(JSON.stringify({ ok: true }), {

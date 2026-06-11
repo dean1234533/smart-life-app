@@ -104,6 +104,14 @@ service cloud.firestore {
       match /dismissedActions/{docId} {
         allow read, write: if isAuth() && isOwner(uid);
       }
+
+      match /workouts/{docId} {
+        allow read, write: if isAuth() && isOwner(uid);
+      }
+
+      match /nutrition/{docId} {
+        allow read, write: if isAuth() && isOwner(uid);
+      }
     }
 
     // Invites: anyone can read; admin can create/delete;
@@ -121,6 +129,20 @@ service cloud.firestore {
     match /slugIndex/{slugId} {
       allow read: if true;
       allow write: if isAuth();
+    }
+
+    // Mirror rooms — WebRTC signaling for screen casting.
+    // Authenticated (including anonymous) users can create and join rooms.
+    // Anonymous auth is used on the TV side, signed-in users cast from the app.
+    match /mirrorRooms/{roomId} {
+      allow read, write: if isAuth();
+
+      match /senderCandidates/{id} {
+        allow read, write: if isAuth();
+      }
+      match /receiverCandidates/{id} {
+        allow read, write: if isAuth();
+      }
     }
 
     // Deny everything else
