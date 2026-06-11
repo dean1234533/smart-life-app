@@ -308,25 +308,7 @@ Format it clearly with bold headings and bullet points.`,
         setToolStatus(`Searching for "${args.query}"...`);
         const q = encodeURIComponent(args.query);
 
-        // Try Brave Search first (richer results, needs optional API key)
-        const braveKey = (() => { try { return localStorage.getItem('brave_search_key'); } catch { return null; } })();
-        if (braveKey) {
-          try {
-            const res = await fetch(`https://api.search.brave.com/res/v1/web/search?q=${q}&count=5`, {
-              headers: { Accept: 'application/json', 'Accept-Encoding': 'gzip', 'X-Subscription-Token': braveKey },
-              signal: AbortSignal.timeout(8000),
-            });
-            if (res.ok) {
-              const data = await res.json();
-              const results = (data.web?.results || []).slice(0, 5)
-                .map(r => `**${r.title}**\n${r.description || ''}\n${r.url}`)
-                .join('\n\n');
-              if (results) return { results };
-            }
-          } catch {}
-        }
-
-        // Fallback: DuckDuckGo Instant Answers (free, no key needed)
+        // DuckDuckGo Instant Answers — free, no key needed
         try {
           const res = await fetch(
             `https://api.duckduckgo.com/?q=${q}&format=json&no_html=1&skip_disambig=1&no_redirect=1`,

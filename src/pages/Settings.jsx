@@ -3,7 +3,7 @@ import { useNavigate, Link } from "react-router-dom";
 import { Key, Loader2, Eye, EyeOff, Check,
   LogOut, ArrowLeft, Shield, Bell, Calendar, ExternalLink, Sparkles,
   Link2, Link2Off, Download,
-  Trash2, FileJson, AlertTriangle, Search
+  Trash2, FileJson, AlertTriangle
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -35,10 +35,6 @@ export default function Settings() {
   const [connectingGoogle, setConnectingGoogle] = useState(false);
   const [exportingICS, setExportingICS] = useState(false);
 
-  // Web search
-  const [braveKey, setBraveKey] = useState('');
-  const [showBraveKey, setShowBraveKey] = useState(false);
-
   // GDPR
   const [exportingData, setExportingData] = useState(false);
   const [deletingAccount, setDeletingAccount] = useState(false);
@@ -48,7 +44,6 @@ export default function Settings() {
 
 
   useEffect(() => {
-    try { const k = localStorage.getItem('brave_search_key'); if (k) setBraveKey(k); } catch {}
     checkGoogleCalendarStatus().then(setGoogleConnected);
     const params = new URLSearchParams(window.location.search);
     if (params.get('calendar') === 'connected') {
@@ -275,51 +270,6 @@ export default function Settings() {
           )}
         </section>
 
-        {/* Web Search */}
-        <section className="p-4 rounded-2xl bg-card border border-border/50 space-y-3">
-          <div className="flex items-center gap-2">
-            <Search className="w-4 h-4 text-accent" />
-            <h2 className="text-sm font-heading font-semibold">Web Search</h2>
-            <span className="ml-auto text-[10px] bg-muted text-muted-foreground px-2 py-0.5 rounded-full">Optional</span>
-          </div>
-          <p className="text-xs text-muted-foreground">
-            The AI agent can already search the web for free using DuckDuckGo. Add a Brave Search API key for richer, more detailed results.
-          </p>
-          <div className="rounded-xl bg-emerald-500/10 border border-emerald-500/20 p-2.5 flex items-center gap-2">
-            <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-            <p className="text-xs text-emerald-400">DuckDuckGo search is active — no setup needed</p>
-          </div>
-          <div className="space-y-2">
-            <p className="text-xs text-muted-foreground">Brave Search API key (optional — for fuller results):</p>
-            <div className="relative">
-              <Input
-                type={showBraveKey ? "text" : "password"}
-                value={braveKey}
-                onChange={e => setBraveKey(e.target.value)}
-                placeholder="BSA..."
-                className="pr-10 rounded-xl text-sm"
-              />
-              <button onClick={() => setShowBraveKey(!showBraveKey)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
-                {showBraveKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-              </button>
-            </div>
-            <div className="flex gap-2">
-              <Button size="sm" onClick={() => {
-                try {
-                  if (braveKey.trim()) { localStorage.setItem('brave_search_key', braveKey.trim()); toast.success('Brave Search key saved'); }
-                  else { localStorage.removeItem('brave_search_key'); toast.success('Brave Search key removed'); }
-                } catch { toast.error('Could not save key'); }
-              }} className="rounded-xl bg-accent text-accent-foreground hover:bg-accent/90">
-                <Check className="w-3.5 h-3.5 mr-1.5" />Save
-              </Button>
-              <a href="https://api.search.brave.com/register" target="_blank" rel="noopener noreferrer"
-                className="flex items-center gap-1 text-xs text-muted-foreground hover:text-accent self-center">
-                <ExternalLink className="w-3 h-3" />Get a free key
-              </a>
-            </div>
-          </div>
-        </section>
 
         <section className="p-4 rounded-2xl bg-card border border-border/50 space-y-3">
           <div className="flex items-center gap-2">
