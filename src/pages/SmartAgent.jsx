@@ -185,6 +185,7 @@ export default function SmartAgent() {
   const inputRef = useRef(null);
   const mediaRecorderRef = useRef(null);
   const chunksRef = useRef([]);
+  const recognitionRef = useRef(null);
 
   useEffect(() => {
     if (!uid) return;
@@ -291,8 +292,34 @@ Format it clearly with bold headings and bullet points.`,
   }, [uid, userApiKey]);
 
   const startRecording = async () => {
+    // Use the browser's built-in speech recognition — free, no API key needed.
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (SpeechRecognition) {
+      const recognition = new SpeechRecognition();
+      recognition.lang = 'en-US';
+      recognition.continuous = false;
+      recognition.interimResults = false;
+      recognition.onstart = () => setIsRecording(true);
+      recognition.onend = () => { setIsRecording(false); recognitionRef.current = null; };
+      recognition.onerror = (e) => {
+        setIsRecording(false);
+        recognitionRef.current = null;
+        if (e.error === 'not-allowed') toast.error("Microphone access denied — allow it in browser settings.");
+        else if (e.error === 'no-speech') toast.error("No speech detected — try again.");
+        else if (e.error !== 'aborted') toast.error("Voice recognition failed — try typing instead.");
+      };
+      recognition.onresult = (event) => {
+        const transcript = event.results[0][0].transcript;
+        if (transcript?.trim()) send(transcript.trim());
+      };
+      recognitionRef.current = recognition;
+      recognition.start();
+      return;
+    }
+
+    // Fallback: MediaRecorder → Gemini transcription (requires API key)
     if (!navigator.mediaDevices?.getUserMedia) {
-      toast.error("Microphone not available. Try Safari or Chrome.");
+      toast.error("Microphone not available. Try Chrome or Safari.");
       return;
     }
     let stream;
@@ -315,11 +342,8 @@ Format it clearly with bold headings and bullet points.`,
       setIsTranscribing(true);
       try {
         const text = await transcribeAudio(blob, uid, userApiKey);
-        if (text?.trim()) {
-          send(text.trim());
-        } else {
-          toast.error("Couldn't hear anything — try again.");
-        }
+        if (text?.trim()) send(text.trim());
+        else toast.error("Couldn't hear anything — try again.");
       } catch (err) {
         toast.error(`Transcription failed: ${err.message}`);
       } finally {
@@ -331,6 +355,10 @@ Format it clearly with bold headings and bullet points.`,
   };
 
   const stopRecording = () => {
+    if (recognitionRef.current) {
+      recognitionRef.current.stop();
+      return;
+    }
     mediaRecorderRef.current?.stop();
     setIsRecording(false);
   };
