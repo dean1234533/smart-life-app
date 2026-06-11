@@ -1,6 +1,6 @@
 import { firestore, firebaseAuth } from '@/lib/firebase';
 import {
-  doc, setDoc, getDoc, onSnapshot, addDoc, collection, deleteDoc, serverTimestamp,
+  doc, setDoc, getDoc, onSnapshot, addDoc, collection, serverTimestamp,
 } from 'firebase/firestore';
 import { signInAnonymously } from 'firebase/auth';
 

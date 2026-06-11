@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowLeft, Copy, Check, ChevronLeft, ChevronRight, Loader2, Link, Eye, EyeOff } from "lucide-react";
+import { ArrowLeft, Check, ChevronLeft, ChevronRight, Loader2, Link } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { format, addDays, startOfDay, getDay } from "date-fns";

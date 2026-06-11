@@ -20,6 +20,9 @@ import NoteEditor from '@/pages/NoteEditor';
 import Recordings from '@/pages/Recordings';
 import RecordingNew from '@/pages/RecordingNew';
 import RecordingDetail from '@/pages/RecordingDetail';
+import PhoneCalls from '@/pages/PhoneCalls';
+import PhoneCallNew from '@/pages/PhoneCallNew';
+import PhoneCallDetail from '@/pages/PhoneCallDetail';
 import Timeline from '@/pages/Timeline';
 import Tasks from '@/pages/Tasks';
 import SmartAgent from '@/pages/SmartAgent';
@@ -109,6 +112,9 @@ const AuthenticatedApp = () => {
           <Route path="/recordings" element={<Recordings />} />
           <Route path="/recordings/new" element={<RecordingNew />} />
           <Route path="/recordings/:id" element={<RecordingDetail />} />
+          <Route path="/phone-calls" element={<PhoneCalls />} />
+          <Route path="/phone-calls/new" element={<PhoneCallNew />} />
+          <Route path="/phone-calls/:id" element={<PhoneCallDetail />} />
           <Route path="/timeline" element={<Timeline />} />
           <Route path="/tasks" element={<Tasks />} />
           <Route path="/agent" element={<SmartAgent />} />

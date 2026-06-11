@@ -5,13 +5,19 @@ import pluginReactHooks from "eslint-plugin-react-hooks";
 import pluginUnusedImports from "eslint-plugin-unused-imports";
 
 export default [
+  // ── Global ignores (must be a standalone entry in flat config) ──────────
   {
-    files: [
-      "src/components/**/*.{js,mjs,cjs,jsx}",
-      "src/pages/**/*.{js,mjs,cjs,jsx}",
-      "src/Layout.jsx",
+    ignores: [
+      "src/components/ui/**",
+      "src/lib/**",
+      "node_modules/**",
+      "dist/**",
     ],
-    ignores: ["src/lib/**/*", "src/components/ui/**/*"],
+  },
+
+  // ── Main config: all JS/JSX under src/ ──────────────────────────────────
+  {
+    files: ["src/**/*.{js,mjs,cjs,jsx}"],
     ...pluginJs.configs.recommended,
     ...pluginReact.configs.flat.recommended,
     languageOptions: {

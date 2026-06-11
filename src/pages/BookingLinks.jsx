@@ -56,11 +56,33 @@ export default function BookingLinks() {
     } catch { /* non-blocking */ }
   };
 
+  // Re-register any existing links that may be missing from slugIndex
+  // (e.g. created before the slug index was wired up)
+  const syncSlugIndex = async (userId, existingLinks) => {
+    try {
+      const { firestore } = await import("@/lib/firebase");
+      const { doc, getDoc, setDoc } = await import("firebase/firestore");
+      for (const link of existingLinks) {
+        if (!link.slug) continue;
+        const slugRef = doc(firestore, "slugIndex", link.slug);
+        const slugSnap = await getDoc(slugRef);
+        if (!slugSnap.exists()) {
+          await setDoc(slugRef, { uid: userId, linkId: link.id, active: link.active !== false });
+        }
+      }
+    } catch { /* non-blocking */ }
+  };
+
   const { data: links = [], isLoading } = useQuery({
     queryKey: ["bookingLinks", uid],
     queryFn: () => bookingLinksService.list(uid),
     enabled: !!uid,
   });
+
+  // Silently repair any links missing from slugIndex on page load (RQ v5 — no onSuccess)
+  useEffect(() => {
+    if (uid && links?.length) syncSlugIndex(uid, links);
+  }, [uid, links]);
 
   const createMutation = useMutation({
     mutationFn: async (data) => {

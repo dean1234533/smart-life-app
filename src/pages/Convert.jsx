@@ -3,11 +3,10 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, Upload, Download, RefreshCw, FileImage,
-  FileVideo, FileAudio, FileArchive, FilePlus, X, Loader2,
+  FileVideo, FileAudio, X, Loader2,
   Music, ExternalLink, Check, AlertCircle, Zap
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { toast } from 'sonner';
 import {
   detectGroup, convertImage, convertMedia, compressToZip, imagesToPDF,
   downloadBlob, getOutputFilename, formatSize,

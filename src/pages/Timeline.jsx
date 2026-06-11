@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Search, StickyNote, Mic, CheckCircle2, Brain, Calendar, Handshake, Milestone, ArrowRight } from "lucide-react";
+import { Search, StickyNote, Mic, CheckCircle2, Brain, Calendar, Handshake, Milestone } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { motion } from "framer-motion";

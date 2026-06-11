@@ -97,7 +97,7 @@ export default function MeetingSummaries() {
   const [expanded, setExpanded] = useState({});
   const [userApiKey, setUserApiKey] = useState("");
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+   
   useEffect(() => {
     if (!uid) return;
     getOrCreateUser(uid).then(p => { if (p?.apiKey) setUserApiKey(p.apiKey); }).catch(() => {});

@@ -102,15 +102,16 @@ export default function BookingPage() {
       let foundTitle = "Book a Time";
 
       if (slug) {
-        // Try slug index
-        const slugDocs = await getDocs(
-          query(collection(firestore, "slugIndex"), where("slug", "==", slug), limit(1))
-        );
-        if (!slugDocs.empty) {
-          const entry = slugDocs.docs[0].data();
+        // slugIndex docs are stored with the slug as the document ID
+        // e.g. slugIndex/{my-link} → { uid, linkId, active }
+        const slugSnap = await getDoc(doc(firestore, "slugIndex", slug));
+        if (slugSnap.exists()) {
+          const entry = slugSnap.data();
           foundUid = entry.uid;
           foundLinkId = entry.linkId;
-          // Check link is active
+          // Check link is active in slugIndex
+          if (entry.active === false) { setError("This booking link is inactive."); setLoading(false); return; }
+          // Also load the full link doc for the title
           const linkSnap = await getDoc(doc(firestore, "users", foundUid, "bookingLinks", foundLinkId));
           if (linkSnap.exists()) {
             const linkData = linkSnap.data();
@@ -118,7 +119,7 @@ export default function BookingPage() {
             foundTitle = linkData.title || "Book a Time";
           }
         } else if (foundUid) {
-          // Try uid + slug on the user's subcollection
+          // Fallback: uid provided via ?uid= param — search the user's subcollection by slug
           const linksSnap = await getDocs(
             query(collection(firestore, "users", foundUid, "bookingLinks"), where("slug", "==", slug), limit(1))
           );
@@ -139,7 +140,19 @@ export default function BookingPage() {
 
       // Load owner profile (working hours, hidden slots)
       const profile = await getOrCreateUser(foundUid);
-      if (profile?.workingHours) setWorkingHours({ ...DEFAULT_WORKING_HOURS, ...profile.workingHours });
+      if (profile?.workingHours) {
+        setWorkingHours({ ...DEFAULT_WORKING_HOURS, ...profile.workingHours });
+      } else if (profile?.globalBookingRules) {
+        // Fall back to globalBookingRules (set on Booking Links page) to determine available hours
+        const rules = profile.globalBookingRules;
+        setWorkingHours(prev => ({
+          ...prev,
+          startTime: rules.noBookingBefore || prev.startTime,
+          endTime: rules.noBookingAfter || prev.endTime,
+          bufferMinutes: rules.bufferMinutes ?? prev.bufferMinutes,
+          workDays: rules.weekdaysOnly ? [1, 2, 3, 4, 5] : [0, 1, 2, 3, 4, 5, 6],
+        }));
+      }
       if (profile?.hiddenSlots) setHiddenSlots(profile.hiddenSlots || []);
 
       // Load existing confirmed bookings

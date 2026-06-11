@@ -3,7 +3,7 @@ import { useSearchParams, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Cast, Monitor, Maximize2, Minimize2, Copy, CheckCheck,
-  Loader2, Wifi, WifiOff, AlertCircle, ArrowLeft, X, Smartphone
+  Loader2, Wifi, WifiOff, AlertCircle, ArrowLeft, X
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Shield, ChevronDown, ExternalLink, Globe, Lock, Zap, Info } from 'lucide-react';
+import { ArrowLeft, Shield, ChevronDown, ExternalLink, Lock, Info } from 'lucide-react';
 
 const VPNS = [
   {
