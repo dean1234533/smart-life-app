@@ -1,12 +1,11 @@
 import { Link, useLocation } from "react-router-dom";
-import { Home, StickyNote, Mic, Phone, Clock, Sparkles, Settings } from "lucide-react";
+import { Home, StickyNote, Mic, Clock, Sparkles, Settings } from "lucide-react";
 import { motion } from "framer-motion";
 
 const navItems = [
   { path: "/", icon: Home, label: "Home" },
   { path: "/notes", icon: StickyNote, label: "Notes" },
   { path: "/recordings", icon: Mic, label: "Record" },
-  { path: "/phone-calls", icon: Phone, label: "Calls" },
   { path: "/timeline", icon: Clock, label: "Timeline" },
   { path: "/agent", icon: Sparkles, label: "Agent" },
   { path: "/settings", icon: Settings, label: "Settings" },
