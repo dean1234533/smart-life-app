@@ -168,7 +168,7 @@ function SaveButton({ content, uid }) {
       const title = content.split('\n').find(l => l.trim())?.replace(/^#+\s*/, '').slice(0, 60) || 'AI Response';
       if (cat.key === 'workout') {
         const { workoutsService } = await import('@/lib/firestoreService');
-        await workoutsService.create(uid, { title, notes: content, type: 'general', source: 'ai', date: new Date().toISOString() });
+        await workoutsService.create(uid, { name: title, notes: content, type: 'general', source: 'ai', date: new Date().toISOString() });
       } else if (cat.key === 'recipe') {
         const { recipesService } = await import('@/lib/firestoreService');
         await recipesService.create(uid, { title, instructions: content, ingredients: [], source: 'ai' });
@@ -423,7 +423,7 @@ Format clearly with bold section headings and bullet points.`,
       case 'save_workout': {
         setToolStatus('Saving workout to your Fitness section...');
         await workoutsService.create(uid, {
-          title: args.title,
+          name: args.title,
           notes: args.content,
           type: args.type || 'general',
           source: 'ai',

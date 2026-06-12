@@ -3,8 +3,9 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import {
   ArrowLeft, Plus, Trash2, X, Dumbbell, Apple,
-  Flame, Clock, ChevronDown,
+  Flame, Clock, ChevronDown, ChevronUp, Sparkles,
 } from "lucide-react";
+import ReactMarkdown from "react-markdown";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { motion, AnimatePresence } from "framer-motion";
@@ -160,6 +161,81 @@ function NutritionForm({ onSave, onCancel, isPending }) {
           })}
           className="flex-1 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white">Save</Button>
       </div>
+    </motion.div>
+  );
+}
+
+// ── Workout card (supports expandable AI plans) ────────────────────────────
+function WorkoutCard({ item, date, onDelete }) {
+  const [expanded, setExpanded] = useState(false);
+  const isAiPlan = item.source === 'ai' || (item.notes && item.notes.length > 120);
+
+  return (
+    <motion.div initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, x: -20 }}
+      className="rounded-xl bg-card border border-border/50 overflow-hidden">
+      <div className="flex items-start gap-3 p-3.5">
+        <div className="w-10 h-10 rounded-xl bg-purple-500/10 flex items-center justify-center shrink-0 text-lg">
+          {item.source === 'ai' ? <Sparkles className="w-4 h-4 text-accent" /> : (WORKOUT_TYPE_ICONS[item.type] || "💪")}
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-medium">{item.name}</p>
+          <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+            {item.source === 'ai'
+              ? <span className="text-[10px] bg-accent/15 text-accent px-1.5 py-0.5 rounded-md">AI Plan</span>
+              : <span className="text-[10px] bg-purple-500/15 text-purple-300 px-1.5 py-0.5 rounded-md">{item.type}</span>
+            }
+            {item.duration && (
+              <span className="text-[10px] text-muted-foreground flex items-center gap-0.5">
+                <Clock className="w-2.5 h-2.5" />{item.duration}m
+              </span>
+            )}
+            {item.calories && (
+              <span className="text-[10px] text-muted-foreground flex items-center gap-0.5">
+                <Flame className="w-2.5 h-2.5" />{item.calories}
+              </span>
+            )}
+          </div>
+          {!isAiPlan && item.notes && (
+            <p className="text-xs text-muted-foreground mt-1">{item.notes}</p>
+          )}
+          <p className="text-[10px] text-muted-foreground mt-1">{format(date, "EEE, MMM d yyyy")}</p>
+        </div>
+        <div className="flex items-center gap-1 shrink-0 mt-0.5">
+          {isAiPlan && (
+            <button onClick={() => setExpanded(e => !e)}
+              className="text-muted-foreground hover:text-accent p-1 rounded-lg hover:bg-accent/10 transition-colors">
+              {expanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+            </button>
+          )}
+          <button onClick={onDelete} className="text-muted-foreground hover:text-destructive p-1">
+            <Trash2 className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      </div>
+      <AnimatePresence>
+        {expanded && item.notes && (
+          <motion.div initial={{ height: 0 }} animate={{ height: 'auto' }} exit={{ height: 0 }}
+            className="overflow-hidden border-t border-border/40">
+            <div className="px-4 py-3">
+              <ReactMarkdown
+                className="prose prose-sm prose-invert max-w-none text-xs [&>*:first-child]:mt-0 [&>*:last-child]:mb-0"
+                components={{
+                  p: ({ children }) => <p className="my-1 text-muted-foreground">{children}</p>,
+                  ul: ({ children }) => <ul className="my-1 ml-4 list-disc text-muted-foreground">{children}</ul>,
+                  ol: ({ children }) => <ol className="my-1 ml-4 list-decimal text-muted-foreground">{children}</ol>,
+                  li: ({ children }) => <li className="my-0.5">{children}</li>,
+                  strong: ({ children }) => <strong className="text-accent font-semibold">{children}</strong>,
+                  h1: ({ children }) => <h1 className="text-sm font-bold text-foreground mt-3 mb-1">{children}</h1>,
+                  h2: ({ children }) => <h2 className="text-sm font-bold text-foreground mt-3 mb-1">{children}</h2>,
+                  h3: ({ children }) => <h3 className="text-xs font-semibold text-foreground mt-2 mb-1">{children}</h3>,
+                }}
+              >
+                {item.notes}
+              </ReactMarkdown>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </motion.div>
   );
 }
@@ -333,33 +409,7 @@ export default function Fitness() {
             {items.map((item) => {
               const date = getEntryDate(item);
               return isWorkouts ? (
-                <motion.div key={item.id} initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, x: -20 }}
-                  className="flex items-start gap-3 p-3.5 rounded-xl bg-card border border-border/50">
-                  <div className="w-10 h-10 rounded-xl bg-purple-500/10 flex items-center justify-center shrink-0 text-lg">
-                    {WORKOUT_TYPE_ICONS[item.type] || "💪"}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium truncate">{item.name}</p>
-                    <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-                      <span className="text-[10px] bg-purple-500/15 text-purple-300 px-1.5 py-0.5 rounded-md">{item.type}</span>
-                      {item.duration && (
-                        <span className="text-[10px] text-muted-foreground flex items-center gap-0.5">
-                          <Clock className="w-2.5 h-2.5" />{item.duration}m
-                        </span>
-                      )}
-                      {item.calories && (
-                        <span className="text-[10px] text-muted-foreground flex items-center gap-0.5">
-                          <Flame className="w-2.5 h-2.5" />{item.calories}
-                        </span>
-                      )}
-                    </div>
-                    {item.notes && <p className="text-xs text-muted-foreground mt-1 truncate">{item.notes}</p>}
-                    <p className="text-[10px] text-muted-foreground mt-1">{format(date, "EEE, MMM d yyyy")}</p>
-                  </div>
-                  <button onClick={() => deleteWorkout.mutate(item.id)} className="text-muted-foreground hover:text-destructive shrink-0 mt-0.5">
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
-                </motion.div>
+                <WorkoutCard key={item.id} item={item} date={date} onDelete={() => deleteWorkout.mutate(item.id)} />
               ) : (
                 <motion.div key={item.id} initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, x: -20 }}
                   className="flex items-start gap-3 p-3.5 rounded-xl bg-card border border-border/50">
