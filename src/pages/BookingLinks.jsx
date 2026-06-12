@@ -67,7 +67,7 @@ export default function BookingLinks() {
         const slugRef = doc(firestore, "slugIndex", link.slug);
         const slugSnap = await getDoc(slugRef);
         if (!slugSnap.exists()) {
-          await setDoc(slugRef, { uid: userId, linkId: link.id, active: link.active !== false });
+          await setDoc(slugRef, { uid: userId, linkId: link.id, active: link.active !== false, title: link.title || '' });
         }
       }
     } catch { /* non-blocking */ }
@@ -90,7 +90,7 @@ export default function BookingLinks() {
       try {
         const { firestore } = await import("@/lib/firebase");
         const { doc, setDoc } = await import("firebase/firestore");
-        await setDoc(doc(firestore, "slugIndex", data.slug), { uid, linkId: link.id, active: data.active !== false });
+        await setDoc(doc(firestore, "slugIndex", data.slug), { uid, linkId: link.id, active: data.active !== false, title: data.title || '' });
       } catch { /* non-blocking — ?uid= fallback still works */ }
       return link;
     },
@@ -105,11 +105,14 @@ export default function BookingLinks() {
   const updateMutation = useMutation({
     mutationFn: async ({ id, data, slug }) => {
       await bookingLinksService.update(uid, id, data);
-      if (slug && "active" in data) {
+      if (slug) {
         try {
           const { firestore } = await import("@/lib/firebase");
           const { doc, updateDoc } = await import("firebase/firestore");
-          await updateDoc(doc(firestore, "slugIndex", slug), { active: data.active });
+          const patch = {};
+          if ("active" in data) patch.active = data.active;
+          if ("title" in data) patch.title = data.title;
+          if (Object.keys(patch).length) await updateDoc(doc(firestore, "slugIndex", slug), patch);
         } catch { /* non-blocking */ }
       }
     },

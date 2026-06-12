@@ -62,11 +62,14 @@ service cloud.firestore {
       }
 
       match /bookingLinks/{docId} {
-        allow read, write: if isAuth() && isOwner(uid);
+        allow read: if true; // public — booking pages are unauthenticated
+        allow write: if isAuth() && isOwner(uid);
       }
 
       match /bookings/{docId} {
-        allow read, write: if isAuth() && isOwner(uid);
+        allow read: if true; // public — needed to check slot availability
+        allow create: if true; // public — visitors create their own bookings
+        allow update, delete: if isAuth() && isOwner(uid);
       }
 
       match /availability/{docId} {

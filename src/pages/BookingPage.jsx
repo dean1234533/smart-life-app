@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useParams } from "react-router-dom";
-import { getDocs, collection, query, where, limit, doc, getDoc } from "firebase/firestore";
+import { doc, getDoc } from "firebase/firestore";
 import { firestore } from "@/lib/firebase";
 import { bookingsService } from "@/lib/firestoreService";
 import { format, addDays, startOfDay, isBefore, getDay } from "date-fns";
@@ -102,33 +102,14 @@ export default function BookingPage() {
       let foundTitle = "Book a Time";
 
       if (slug) {
-        // slugIndex docs are stored with the slug as the document ID
-        // e.g. slugIndex/{my-link} → { uid, linkId, active }
+        // slugIndex is publicly readable — contains uid, linkId, active, title
         const slugSnap = await getDoc(doc(firestore, "slugIndex", slug));
         if (slugSnap.exists()) {
           const entry = slugSnap.data();
           foundUid = entry.uid;
           foundLinkId = entry.linkId;
-          // Check link is active in slugIndex
           if (entry.active === false) { setError("This booking link is inactive."); setLoading(false); return; }
-          // Also load the full link doc for the title
-          const linkSnap = await getDoc(doc(firestore, "users", foundUid, "bookingLinks", foundLinkId));
-          if (linkSnap.exists()) {
-            const linkData = linkSnap.data();
-            if (!linkData.active) { setError("This booking link is inactive."); setLoading(false); return; }
-            foundTitle = linkData.title || "Book a Time";
-          }
-        } else if (foundUid) {
-          // Fallback: uid provided via ?uid= param — search the user's subcollection by slug
-          const linksSnap = await getDocs(
-            query(collection(firestore, "users", foundUid, "bookingLinks"), where("slug", "==", slug), limit(1))
-          );
-          if (!linksSnap.empty) {
-            const linkData = linksSnap.docs[0].data();
-            if (!linkData.active) { setError("This booking link is inactive."); setLoading(false); return; }
-            foundLinkId = linksSnap.docs[0].id;
-            foundTitle = linkData.title || "Book a Time";
-          }
+          foundTitle = entry.title || "Book a Time";
         }
       }
 
@@ -150,10 +131,12 @@ export default function BookingPage() {
         } catch {} // silently fall back to defaults
       }
 
-      // Load existing confirmed bookings
+      // Load existing confirmed bookings (silently ignore if Firestore rules block unauthenticated reads)
       if (foundLinkId) {
-        const bks = await bookingsService.listByLink(foundUid, foundLinkId);
-        setExistingBookings(bks);
+        try {
+          const bks = await bookingsService.listByLink(foundUid, foundLinkId);
+          setExistingBookings(bks);
+        } catch {} // non-fatal — slots will still show from working hours
       }
 
       // Fetch busy times from Google Calendar (public endpoint — may return empty if not connected)
