@@ -61,9 +61,9 @@ function WorkoutForm({ onSave, onCancel, isPending }) {
 
   return (
     <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}
-      className="p-4 rounded-2xl bg-card border border-purple-500/30 mb-5 space-y-3">
+      className="p-4 rounded-2xl bg-card border border-accent/30 mb-5 space-y-3">
       <div className="flex items-center justify-between">
-        <h3 className="text-sm font-heading font-semibold text-purple-400">Log Workout</h3>
+        <h3 className="text-sm font-heading font-semibold text-accent">Log Workout</h3>
         <button onClick={onCancel} className="text-muted-foreground hover:text-foreground"><X className="w-4 h-4" /></button>
       </div>
 
@@ -97,7 +97,7 @@ function WorkoutForm({ onSave, onCancel, isPending }) {
         <Button variant="ghost" size="sm" onClick={onCancel} className="flex-1 rounded-xl">Cancel</Button>
         <Button size="sm" disabled={!form.name.trim() || isPending}
           onClick={() => onSave({ ...form, duration: form.duration ? parseInt(form.duration) : null, calories: form.calories ? parseInt(form.calories) : null })}
-          className="flex-1 rounded-xl bg-purple-600 hover:bg-purple-700 text-white">Save</Button>
+          className="flex-1 rounded-xl bg-accent hover:bg-accent/90 text-white">Save</Button>
       </div>
     </motion.div>
   );
@@ -168,21 +168,27 @@ function NutritionForm({ onSave, onCancel, isPending }) {
 // ── Workout card (supports expandable AI plans) ────────────────────────────
 function WorkoutCard({ item, date, onDelete }) {
   const [expanded, setExpanded] = useState(false);
+  const hasNotes = !!(item.notes && item.notes.length > 0);
   const isAiPlan = item.source === 'ai' || (item.notes && item.notes.length > 120);
+  const displayName = item.name || item.title || (isAiPlan ? 'AI Workout Plan' : 'Workout');
 
   return (
     <motion.div initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, x: -20 }}
       className="rounded-xl bg-card border border-border/50 overflow-hidden">
-      <div className="flex items-start gap-3 p-3.5">
-        <div className="w-10 h-10 rounded-xl bg-purple-500/10 flex items-center justify-center shrink-0 text-lg">
+      {/* Tappable header row */}
+      <div
+        className={`flex items-start gap-3 p-3.5 ${isAiPlan ? 'cursor-pointer active:bg-muted/30' : ''}`}
+        onClick={isAiPlan ? () => setExpanded(e => !e) : undefined}
+      >
+        <div className="w-10 h-10 rounded-xl bg-accent/10 flex items-center justify-center shrink-0 text-lg">
           {item.source === 'ai' ? <Sparkles className="w-4 h-4 text-accent" /> : (WORKOUT_TYPE_ICONS[item.type] || "💪")}
         </div>
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-medium">{item.name}</p>
+          <p className="text-sm font-medium">{displayName}</p>
           <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-            {item.source === 'ai'
+            {isAiPlan
               ? <span className="text-[10px] bg-accent/15 text-accent px-1.5 py-0.5 rounded-md">AI Plan</span>
-              : <span className="text-[10px] bg-purple-500/15 text-purple-300 px-1.5 py-0.5 rounded-md">{item.type}</span>
+              : <span className="text-[10px] bg-accent/10 text-accent px-1.5 py-0.5 rounded-md">{item.type || 'General'}</span>
             }
             {item.duration && (
               <span className="text-[10px] text-muted-foreground flex items-center gap-0.5">
@@ -195,25 +201,25 @@ function WorkoutCard({ item, date, onDelete }) {
               </span>
             )}
           </div>
-          {!isAiPlan && item.notes && (
-            <p className="text-xs text-muted-foreground mt-1">{item.notes}</p>
+          {!expanded && hasNotes && (
+            <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{item.notes}</p>
           )}
           <p className="text-[10px] text-muted-foreground mt-1">{format(date, "EEE, MMM d yyyy")}</p>
         </div>
-        <div className="flex items-center gap-1 shrink-0 mt-0.5">
+        <div className="flex items-center gap-1 shrink-0 mt-0.5" onClick={(e) => e.stopPropagation()}>
           {isAiPlan && (
             <button onClick={() => setExpanded(e => !e)}
-              className="text-muted-foreground hover:text-accent p-1 rounded-lg hover:bg-accent/10 transition-colors">
-              {expanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+              className="text-muted-foreground hover:text-accent p-1.5 rounded-lg hover:bg-accent/10 transition-colors">
+              {expanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
             </button>
           )}
-          <button onClick={onDelete} className="text-muted-foreground hover:text-destructive p-1">
-            <Trash2 className="w-3.5 h-3.5" />
+          <button onClick={onDelete} className="text-muted-foreground hover:text-destructive p-1.5">
+            <Trash2 className="w-4 h-4" />
           </button>
         </div>
       </div>
       <AnimatePresence>
-        {expanded && item.notes && (
+        {expanded && hasNotes && (
           <motion.div initial={{ height: 0 }} animate={{ height: 'auto' }} exit={{ height: 0 }}
             className="overflow-hidden border-t border-border/40">
             <div className="px-4 py-3">
@@ -329,7 +335,7 @@ export default function Fitness() {
           <h1 className="text-2xl font-display font-bold">Fitness</h1>
         </div>
         <Button size="sm" onClick={() => setShowForm(true)}
-          className={`rounded-xl text-white gap-1.5 ${isWorkouts ? "bg-purple-600 hover:bg-purple-700" : "bg-emerald-600 hover:bg-emerald-700"}`}>
+          className={`rounded-xl text-white gap-1.5 ${isWorkouts ? "bg-accent hover:bg-accent/90" : "bg-emerald-600 hover:bg-emerald-700"}`}>
           <Plus className="w-3.5 h-3.5" />{isWorkouts ? "Workout" : "Meal"}
         </Button>
       </div>
@@ -349,18 +355,18 @@ export default function Fitness() {
       {/* Summary cards */}
       {tab === "workouts" && workouts.length > 0 && (
         <div className="grid grid-cols-3 gap-2 mb-5">
-          <div className="p-3 rounded-2xl bg-purple-500/10 border border-purple-500/20 text-center">
-            <p className="text-2xl font-display font-bold text-purple-400">{weekStats.sessions}</p>
+          <div className="p-3 rounded-2xl bg-accent/10 border border-accent/20 text-center">
+            <p className="text-2xl font-display font-bold text-accent">{weekStats.sessions}</p>
             <p className="text-[10px] text-muted-foreground mt-0.5">Sessions</p>
             <p className="text-[10px] text-muted-foreground">this week</p>
           </div>
-          <div className="p-3 rounded-2xl bg-purple-500/10 border border-purple-500/20 text-center">
-            <p className="text-2xl font-display font-bold text-purple-400">{weekStats.minutes}</p>
+          <div className="p-3 rounded-2xl bg-accent/10 border border-accent/20 text-center">
+            <p className="text-2xl font-display font-bold text-accent">{weekStats.minutes}</p>
             <p className="text-[10px] text-muted-foreground mt-0.5">Minutes</p>
             <p className="text-[10px] text-muted-foreground">this week</p>
           </div>
-          <div className="p-3 rounded-2xl bg-purple-500/10 border border-purple-500/20 text-center">
-            <p className="text-2xl font-display font-bold text-purple-400">{weekStats.calories || "—"}</p>
+          <div className="p-3 rounded-2xl bg-accent/10 border border-accent/20 text-center">
+            <p className="text-2xl font-display font-bold text-accent">{weekStats.calories || "—"}</p>
             <p className="text-[10px] text-muted-foreground mt-0.5">Cal burned</p>
             <p className="text-[10px] text-muted-foreground">this week</p>
           </div>
