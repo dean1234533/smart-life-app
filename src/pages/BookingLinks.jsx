@@ -13,16 +13,22 @@ import { toast } from "sonner";
 import { bookingLinksService, getOrCreateUser } from "@/lib/firestoreService";
 import { useCurrentUid } from "@/hooks/useCurrentUid";
 
+const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+function makeDefaultSchedule(enabledDays = [1,2,3,4,5]) {
+  return Object.fromEntries(
+    [0,1,2,3,4,5,6].map(i => [i, { enabled: enabledDays.includes(i), start: "09:00", end: "18:00" }])
+  );
+}
+
 function slugify(text) {
   return text.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 }
 
 const DEFAULT_RULES = {
   bufferMinutes: 15,
-  noBookingBefore: "09:00",
-  noBookingAfter: "18:00",
-  weekdaysOnly: true,
   maxBookingsPerDay: 8,
+  schedule: makeDefaultSchedule(),
 };
 
 export default function BookingLinks() {
@@ -34,6 +40,7 @@ export default function BookingLinks() {
   const [expandedId, setExpandedId] = useState(null);
   const [globalRules, setGlobalRules] = useState(DEFAULT_RULES);
   const [savingRules, setSavingRules] = useState(false);
+  const [selectedRuleDay, setSelectedRuleDay] = useState(1);
 
   const [newLink, setNewLink] = useState({
     title: "",
@@ -48,7 +55,23 @@ export default function BookingLinks() {
   const loadGlobalRules = async (userId) => {
     try {
       const profile = await getOrCreateUser(userId);
-      if (profile?.globalBookingRules) setGlobalRules(profile.globalBookingRules);
+      if (profile?.globalBookingRules) {
+        const r = profile.globalBookingRules;
+        // Migrate old format (noBookingBefore/After/weekdaysOnly) to per-day schedule
+        if (!r.schedule) {
+          const enabledDays = r.weekdaysOnly !== false ? [1,2,3,4,5] : [0,1,2,3,4,5,6];
+          r.schedule = makeDefaultSchedule(enabledDays);
+          if (r.noBookingBefore || r.noBookingAfter) {
+            Object.keys(r.schedule).forEach(i => {
+              if (r.schedule[i].enabled) {
+                r.schedule[i].start = r.noBookingBefore || "09:00";
+                r.schedule[i].end = r.noBookingAfter || "18:00";
+              }
+            });
+          }
+        }
+        setGlobalRules({ ...DEFAULT_RULES, ...r });
+      }
     } catch { /* non-blocking */ }
   };
 
@@ -204,24 +227,56 @@ export default function BookingLinks() {
             </div>
           </div>
 
-          <div className="flex items-center justify-between">
-            <label className="text-sm text-muted-foreground">No bookings before</label>
-            <Input type="time" value={globalRules.noBookingBefore}
-              onChange={e => setGlobalRules(r => ({ ...r, noBookingBefore: e.target.value }))}
-              className="w-28 h-8 text-xs rounded-lg" />
-          </div>
+          {/* Per-day schedule */}
+          <div className="space-y-2">
+            <label className="text-sm text-muted-foreground">Available days & hours</label>
+            <div className="flex gap-1">
+              {DAY_LABELS.map((d, i) => {
+                const cfg = globalRules.schedule?.[i] ?? { enabled: false };
+                return (
+                  <button key={d} onClick={() => setSelectedRuleDay(i)}
+                    className={`flex-1 py-2 rounded-lg text-[11px] font-medium transition-all flex flex-col items-center gap-0.5
+                      ${cfg.enabled ? "bg-accent text-accent-foreground" : "bg-muted text-muted-foreground"}
+                      ${selectedRuleDay === i ? "ring-2 ring-accent ring-offset-2 ring-offset-background" : ""}`}>
+                    <span>{d}</span>
+                    {cfg.enabled && <span className="text-[9px] opacity-70">{cfg.start?.slice(0,5)}</span>}
+                  </button>
+                );
+              })}
+            </div>
 
-          <div className="flex items-center justify-between">
-            <label className="text-sm text-muted-foreground">No bookings after</label>
-            <Input type="time" value={globalRules.noBookingAfter}
-              onChange={e => setGlobalRules(r => ({ ...r, noBookingAfter: e.target.value }))}
-              className="w-28 h-8 text-xs rounded-lg" />
-          </div>
-
-          <div className="flex items-center justify-between">
-            <label className="text-sm text-muted-foreground">Weekdays only</label>
-            <Switch checked={globalRules.weekdaysOnly}
-              onCheckedChange={v => setGlobalRules(r => ({ ...r, weekdaysOnly: v }))} />
+            {selectedRuleDay !== null && (() => {
+              const cfg = globalRules.schedule?.[selectedRuleDay] ?? { enabled: false, start: "09:00", end: "18:00" };
+              const update = (patch) => setGlobalRules(r => ({
+                ...r,
+                schedule: { ...r.schedule, [selectedRuleDay]: { ...cfg, ...patch } }
+              }));
+              return (
+                <div className="p-3 rounded-xl bg-muted/40 border border-border/50 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium">{DAY_LABELS[selectedRuleDay]}</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-muted-foreground">{cfg.enabled ? "Available" : "Unavailable"}</span>
+                      <Switch checked={cfg.enabled} onCheckedChange={v => update({ enabled: v })} />
+                    </div>
+                  </div>
+                  {cfg.enabled && (
+                    <div className="flex gap-2">
+                      <div className="flex-1">
+                        <label className="text-xs text-muted-foreground mb-1 block">Start</label>
+                        <Input type="time" value={cfg.start} onChange={e => update({ start: e.target.value })}
+                          className="h-8 text-xs rounded-lg" />
+                      </div>
+                      <div className="flex-1">
+                        <label className="text-xs text-muted-foreground mb-1 block">End</label>
+                        <Input type="time" value={cfg.end} onChange={e => update({ end: e.target.value })}
+                          className="h-8 text-xs rounded-lg" />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
           </div>
 
           <div className="flex items-center justify-between">

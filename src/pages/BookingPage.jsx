@@ -20,11 +20,23 @@ const DEFAULT_WORKING_HOURS = {
 };
 
 function computeFreeSlots(busyTimes, workingHours, hiddenSlots, existingBookings, date) {
-  const { startTime, endTime, slotDurationMinutes, bufferMinutes = 0, workDays } = workingHours;
+  const { slotDurationMinutes, bufferMinutes = 0, perDaySchedule, workDays, startTime, endTime } = workingHours;
   const dayOfWeek = getDay(date);
-  if (!workDays.includes(dayOfWeek)) return [];
-  const [sh, sm] = startTime.split(":").map(Number);
-  const [eh, em] = endTime.split(":").map(Number);
+
+  let dayStart, dayEnd;
+  if (perDaySchedule) {
+    const cfg = perDaySchedule[dayOfWeek];
+    if (!cfg?.enabled) return [];
+    dayStart = cfg.start;
+    dayEnd = cfg.end;
+  } else {
+    if (!workDays?.includes(dayOfWeek)) return [];
+    dayStart = startTime;
+    dayEnd = endTime;
+  }
+
+  const [sh, sm] = dayStart.split(":").map(Number);
+  const [eh, em] = dayEnd.split(":").map(Number);
   const slots = [];
   let current = sh * 60 + sm;
   const endMinutes = eh * 60 + em;

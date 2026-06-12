@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { ArrowLeft, Check, ChevronLeft, ChevronRight, Loader2, Link } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import { format, addDays, startOfDay, getDay } from "date-fns";
 import { useCurrentUid } from "@/hooks/useCurrentUid";
@@ -11,23 +12,50 @@ import { firebaseAuth } from "@/lib/firebase";
 
 const WORKER_URL = import.meta.env.VITE_CALENDAR_WORKER_URL || '';
 
-const DEFAULT_WORKING_HOURS = {
-  startTime: "09:00",
-  endTime: "18:00",
-  slotDurationMinutes: 30,
-  bufferMinutes: 0,
-  workDays: [1, 2, 3, 4, 5],
-};
-
 const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const DURATIONS = [15, 30, 45, 60, 90];
 
+function makeDefaultSchedule(enabledDays = [1,2,3,4,5], start = "09:00", end = "18:00") {
+  return Object.fromEntries(
+    [0,1,2,3,4,5,6].map(i => [i, { enabled: enabledDays.includes(i), start, end }])
+  );
+}
+
+const DEFAULT_WORKING_HOURS = {
+  slotDurationMinutes: 30,
+  bufferMinutes: 0,
+  perDaySchedule: makeDefaultSchedule(),
+};
+
+function migrateWorkingHours(wh) {
+  if (!wh) return DEFAULT_WORKING_HOURS;
+  if (wh.perDaySchedule) return { ...DEFAULT_WORKING_HOURS, ...wh };
+  // Convert old format (workDays + single startTime/endTime) to per-day schedule
+  return {
+    slotDurationMinutes: wh.slotDurationMinutes ?? 30,
+    bufferMinutes: wh.bufferMinutes ?? 0,
+    perDaySchedule: makeDefaultSchedule(wh.workDays ?? [1,2,3,4,5], wh.startTime ?? "09:00", wh.endTime ?? "18:00"),
+  };
+}
+
 function computeFreeSlots(events, workingHours, date) {
-  const { startTime, endTime, slotDurationMinutes, bufferMinutes = 0, workDays } = workingHours;
+  const { slotDurationMinutes, bufferMinutes = 0, perDaySchedule, workDays, startTime, endTime } = workingHours;
   const dayOfWeek = getDay(date);
-  if (!workDays.includes(dayOfWeek)) return [];
-  const [sh, sm] = startTime.split(":").map(Number);
-  const [eh, em] = endTime.split(":").map(Number);
+
+  let dayStart, dayEnd;
+  if (perDaySchedule) {
+    const cfg = perDaySchedule[dayOfWeek];
+    if (!cfg?.enabled) return [];
+    dayStart = cfg.start;
+    dayEnd = cfg.end;
+  } else {
+    if (!workDays?.includes(dayOfWeek)) return [];
+    dayStart = startTime;
+    dayEnd = endTime;
+  }
+
+  const [sh, sm] = dayStart.split(":").map(Number);
+  const [eh, em] = dayEnd.split(":").map(Number);
   const slots = [];
   let current = sh * 60 + sm;
   const endMinutes = eh * 60 + em;
@@ -64,6 +92,7 @@ export default function Availability() {
   const [events, setEvents] = useState([]);
   const [workingHours, setWorkingHours] = useState(DEFAULT_WORKING_HOURS);
   const [hiddenSlots, setHiddenSlots] = useState([]);
+  const [selectedDay, setSelectedDay] = useState(1); // Mon selected by default
   const [saving, setSaving] = useState(false);
   const [weekOffset, setWeekOffset] = useState(0);
   const [copied, setCopied] = useState(false);
@@ -80,7 +109,7 @@ export default function Availability() {
           getOrCreateUser(uid),
         ]);
         setGoogleConnected(connected);
-        if (profile?.workingHours) setWorkingHours({ ...DEFAULT_WORKING_HOURS, ...profile.workingHours });
+        if (profile?.workingHours) setWorkingHours(migrateWorkingHours(profile.workingHours));
         if (profile?.hiddenSlots) setHiddenSlots(profile.hiddenSlots);
         if (connected) {
           const now = new Date();
@@ -181,47 +210,75 @@ export default function Availability() {
       {/* Working hours */}
       <div className="p-4 rounded-2xl bg-card border border-border/50 mb-5 space-y-4">
         <h2 className="text-sm font-heading font-semibold">Working Hours</h2>
+
+        {/* Day picker */}
         <div>
-          <label className="text-xs text-muted-foreground mb-2 block">Work days</label>
+          <label className="text-xs text-muted-foreground mb-2 block">Select a day to set its hours</label>
           <div className="flex gap-1">
-            {DAY_LABELS.map((d, i) => (
-              <button key={d} onClick={() => {
-                const days = workingHours.workDays.includes(i)
-                  ? workingHours.workDays.filter(x => x !== i)
-                  : [...workingHours.workDays, i].sort((a, b) => a - b);
-                setWorkingHours({ ...workingHours, workDays: days });
-              }}
-                className={`flex-1 py-1.5 rounded-lg text-[11px] font-medium transition-all ${workingHours.workDays.includes(i) ? "bg-accent text-accent-foreground" : "bg-muted text-muted-foreground"}`}>
-                {d}
-              </button>
-            ))}
+            {DAY_LABELS.map((d, i) => {
+              const cfg = workingHours.perDaySchedule?.[i] ?? { enabled: false };
+              return (
+                <button key={d} onClick={() => setSelectedDay(i)}
+                  className={`flex-1 py-2 rounded-lg text-[11px] font-medium transition-all flex flex-col items-center gap-0.5
+                    ${cfg.enabled ? "bg-accent text-accent-foreground" : "bg-muted text-muted-foreground"}
+                    ${selectedDay === i ? "ring-2 ring-accent ring-offset-2 ring-offset-background" : ""}`}>
+                  <span>{d}</span>
+                  {cfg.enabled && <span className="text-[9px] opacity-70">{cfg.start?.slice(0,5)}</span>}
+                </button>
+              );
+            })}
           </div>
         </div>
-        <div className="flex gap-3">
-          <div className="flex-1">
-            <label className="text-xs text-muted-foreground mb-1 block">Start</label>
-            <input type="time" value={workingHours.startTime}
-              onChange={e => setWorkingHours({ ...workingHours, startTime: e.target.value })}
-              className="w-full bg-muted rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-accent/50" />
-          </div>
-          <div className="flex-1">
-            <label className="text-xs text-muted-foreground mb-1 block">End</label>
-            <input type="time" value={workingHours.endTime}
-              onChange={e => setWorkingHours({ ...workingHours, endTime: e.target.value })}
-              className="w-full bg-muted rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-accent/50" />
-          </div>
-        </div>
+
+        {/* Per-day time editor */}
+        {selectedDay !== null && (() => {
+          const cfg = workingHours.perDaySchedule?.[selectedDay] ?? { enabled: false, start: "09:00", end: "18:00" };
+          const update = (patch) => setWorkingHours(wh => ({
+            ...wh,
+            perDaySchedule: { ...wh.perDaySchedule, [selectedDay]: { ...cfg, ...patch } }
+          }));
+          return (
+            <div className="p-3 rounded-xl bg-muted/40 border border-border/50 space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-medium">{DAY_LABELS[selectedDay]}</span>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-muted-foreground">{cfg.enabled ? "Available" : "Unavailable"}</span>
+                  <Switch checked={cfg.enabled} onCheckedChange={v => update({ enabled: v })} />
+                </div>
+              </div>
+              {cfg.enabled && (
+                <div className="flex gap-3">
+                  <div className="flex-1">
+                    <label className="text-xs text-muted-foreground mb-1 block">Start</label>
+                    <input type="time" value={cfg.start}
+                      onChange={e => update({ start: e.target.value })}
+                      className="w-full bg-background border border-border rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-accent/50" />
+                  </div>
+                  <div className="flex-1">
+                    <label className="text-xs text-muted-foreground mb-1 block">End</label>
+                    <input type="time" value={cfg.end}
+                      onChange={e => update({ end: e.target.value })}
+                      className="w-full bg-background border border-border rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-accent/50" />
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })()}
+
+        {/* Slot length */}
         <div>
           <label className="text-xs text-muted-foreground mb-2 block">Slot length</label>
           <div className="flex gap-1.5 flex-wrap">
             {DURATIONS.map(d => (
-              <button key={d} onClick={() => setWorkingHours({ ...workingHours, slotDurationMinutes: d })}
+              <button key={d} onClick={() => setWorkingHours(wh => ({ ...wh, slotDurationMinutes: d }))}
                 className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${workingHours.slotDurationMinutes === d ? "bg-accent text-accent-foreground" : "bg-muted text-muted-foreground"}`}>
                 {d}m
               </button>
             ))}
           </div>
         </div>
+
         <Button size="sm" onClick={save} disabled={saving}
           className="w-full rounded-xl bg-accent text-accent-foreground hover:bg-accent/90">
           {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <><Check className="w-3.5 h-3.5 mr-1.5" />Save</>}
