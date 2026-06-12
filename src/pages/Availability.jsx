@@ -7,6 +7,9 @@ import { format, addDays, startOfDay, getDay } from "date-fns";
 import { useCurrentUid } from "@/hooks/useCurrentUid";
 import { getOrCreateUser, updateUserDoc } from "@/lib/firestoreService";
 import { fetchGoogleEvents, checkGoogleCalendarStatus } from "@/services/googleCalendarService";
+import { firebaseAuth } from "@/lib/firebase";
+
+const WORKER_URL = import.meta.env.VITE_CALENDAR_WORKER_URL || '';
 
 const DEFAULT_WORKING_HOURS = {
   startTime: "09:00",
@@ -98,6 +101,17 @@ export default function Availability() {
     setSaving(true);
     try {
       await updateUserDoc(uid, { workingHours, hiddenSlots });
+      // Also push to Worker KV so the public booking page can read it without auth
+      if (WORKER_URL) {
+        const idToken = await firebaseAuth.currentUser?.getIdToken().catch(() => null);
+        if (idToken) {
+          await fetch(`${WORKER_URL}/availability/settings`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json', Authorization: `Firebase ${idToken}` },
+            body: JSON.stringify({ workingHours, hiddenSlots }),
+          }).catch(() => {});
+        }
+      }
       toast.success("Saved");
     } catch {
       toast.error("Failed to save");

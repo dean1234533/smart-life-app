@@ -54,9 +54,10 @@ const AuthenticatedApp = () => {
       if (!isLoadingAuth) setApiKeyChecked(true);
       return;
     }
-    // Fire task reminders once on login/startup
-    import('@/services/notificationService').then(({ checkTaskReminders }) => {
+    // Fire task reminders + weather alerts once on login/startup
+    import('@/services/notificationService').then(({ checkTaskReminders, checkWeatherAlerts }) => {
       checkTaskReminders(user.uid);
+      checkWeatherAlerts();
     });
     const checkApiKey = async () => {
       if (user.uid === ADMIN_UID) { setApiKeyChecked(true); return; }

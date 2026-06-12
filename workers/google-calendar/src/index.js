@@ -277,6 +277,23 @@ export default {
         return json(await resp.json(), 201, env);
       }
 
+      // ── Save availability settings (authenticated) ────────────────────────
+      if (path === '/availability/settings' && request.method === 'PUT') {
+        const uid = await verifyFirebaseToken(extractIdToken(request), projectId);
+        const body = await request.json().catch(() => null);
+        if (!body) return json({ error: 'Invalid body' }, 400, env);
+        await env.GOOGLE_TOKENS.put(`avail:${uid}`, JSON.stringify(body));
+        return json({ ok: true }, 200, env);
+      }
+
+      // ── Get availability settings (public — booking page reads this) ───────
+      if (path.startsWith('/availability/settings/') && request.method === 'GET') {
+        const uid = decodeURIComponent(path.split('/')[3] || '');
+        if (!uid) return json({ error: 'Missing uid' }, 400, env);
+        const stored = await env.GOOGLE_TOKENS.get(`avail:${uid}`, 'json').catch(() => null);
+        return json(stored || { workingHours: null, hiddenSlots: [] }, 200, env);
+      }
+
       // ── Store push subscription (authenticated) ────────────────────────────
       if (path === '/push/subscription' && request.method === 'PUT') {
         const uid = await verifyFirebaseToken(extractIdToken(request), projectId);

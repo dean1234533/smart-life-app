@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useParams } from "react-router-dom";
 import { getDocs, collection, query, where, limit, doc, getDoc } from "firebase/firestore";
 import { firestore } from "@/lib/firebase";
-import { bookingsService, getOrCreateUser } from "@/lib/firestoreService";
+import { bookingsService } from "@/lib/firestoreService";
 import { format, addDays, startOfDay, isBefore, getDay } from "date-fns";
 import { Button } from "@/components/ui/button";
 import { Calendar, ChevronLeft, ChevronRight, CheckCircle2, Sparkles, Globe, Loader2 } from "lucide-react";
@@ -138,22 +138,17 @@ export default function BookingPage() {
       setLinkId(foundLinkId);
       setLinkTitle(foundTitle);
 
-      // Load owner profile (working hours, hidden slots)
-      const profile = await getOrCreateUser(foundUid);
-      if (profile?.workingHours) {
-        setWorkingHours({ ...DEFAULT_WORKING_HOURS, ...profile.workingHours });
-      } else if (profile?.globalBookingRules) {
-        // Fall back to globalBookingRules (set on Booking Links page) to determine available hours
-        const rules = profile.globalBookingRules;
-        setWorkingHours(prev => ({
-          ...prev,
-          startTime: rules.noBookingBefore || prev.startTime,
-          endTime: rules.noBookingAfter || prev.endTime,
-          bufferMinutes: rules.bufferMinutes ?? prev.bufferMinutes,
-          workDays: rules.weekdaysOnly ? [1, 2, 3, 4, 5] : [0, 1, 2, 3, 4, 5, 6],
-        }));
+      // Load owner's availability settings from Worker KV (public — no auth needed)
+      if (WORKER_URL) {
+        try {
+          const settingsRes = await fetch(`${WORKER_URL}/availability/settings/${encodeURIComponent(foundUid)}`);
+          if (settingsRes.ok) {
+            const settings = await settingsRes.json();
+            if (settings?.workingHours) setWorkingHours({ ...DEFAULT_WORKING_HOURS, ...settings.workingHours });
+            if (settings?.hiddenSlots) setHiddenSlots(settings.hiddenSlots || []);
+          }
+        } catch {} // silently fall back to defaults
       }
-      if (profile?.hiddenSlots) setHiddenSlots(profile.hiddenSlots || []);
 
       // Load existing confirmed bookings
       if (foundLinkId) {

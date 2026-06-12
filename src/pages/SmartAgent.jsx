@@ -1,9 +1,9 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Send, Bot, Sparkles, ChefHat, CheckSquare, Loader2 } from "lucide-react";
+import { Send, Bot, Sparkles, ChefHat, CheckSquare, Loader2, Save, Check } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import { invokeGeminiAgent, invokeGemini } from "@/services/geminiService";
-import { getOrCreateUser, recipesService, tasksService } from "@/lib/firestoreService";
+import { getOrCreateUser, recipesService, tasksService, workoutsService } from "@/lib/firestoreService";
 import { useCurrentUid } from "@/hooks/useCurrentUid";
 import { toast } from "sonner";
 
@@ -15,6 +15,7 @@ IMPORTANT RULES:
 - If the user asks for a workout, fitness plan, exercise routine, or training programme → call find_workout
 - If the user asks for a recipe, meal, dish, or food idea → call find_recipe
 - If the user wants to save a recipe → call save_recipe
+- If the user wants to save a workout or fitness plan → call save_workout
 - If the user asks to see their recipes → call list_recipes
 - If the user asks to add a task, reminder, or to-do → call create_task
 - If the user asks to see their tasks → call list_tasks
@@ -117,6 +118,19 @@ const AGENT_TOOLS = [
       required: ['context'],
     },
   },
+  {
+    name: 'save_workout',
+    description: "Save a workout or fitness plan to the user's Fitness section. Call this when the user asks to save a workout that was just generated.",
+    parameters: {
+      type: 'object',
+      properties: {
+        title: { type: 'string', description: 'Title of the workout, e.g. "30-Minute Full Body Workout"' },
+        content: { type: 'string', description: 'The full workout plan text (markdown)' },
+        type: { type: 'string', description: 'Type of workout, e.g. "strength", "cardio", "hiit", "yoga"' },
+      },
+      required: ['title', 'content'],
+    },
+  },
 ];
 
 const SUGGESTIONS = [
@@ -128,7 +142,59 @@ const SUGGESTIONS = [
   "Show me my to-do list",
 ];
 
-function MessageBubble({ message }) {
+const SAVE_CATEGORIES = [
+  { key: 'workout', label: 'Fitness', keywords: ['workout', 'exercise', 'sets', 'reps', 'warm-up', 'cool-down', 'training', 'hiit', 'cardio', 'squat', 'push-up'] },
+  { key: 'recipe', label: 'Recipes', keywords: ['ingredient', 'ingredients', 'recipe', 'cook', 'bake', 'tablespoon', 'teaspoon', 'serves', 'preheat', 'simmer', 'dice'] },
+  { key: 'note', label: 'Notes', keywords: [] },
+];
+
+function detectCategory(text) {
+  const lower = text.toLowerCase();
+  for (const cat of SAVE_CATEGORIES) {
+    if (cat.keywords.some(kw => lower.includes(kw))) return cat;
+  }
+  return SAVE_CATEGORIES[SAVE_CATEGORIES.length - 1]; // default: note
+}
+
+function SaveButton({ content, uid }) {
+  const [saved, setSaved] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const cat = detectCategory(content);
+
+  const handleSave = async () => {
+    if (!uid || saved || saving) return;
+    setSaving(true);
+    try {
+      const title = content.split('\n').find(l => l.trim())?.replace(/^#+\s*/, '').slice(0, 60) || 'AI Response';
+      if (cat.key === 'workout') {
+        const { workoutsService } = await import('@/lib/firestoreService');
+        await workoutsService.create(uid, { title, notes: content, type: 'general', source: 'ai', date: new Date().toISOString() });
+      } else if (cat.key === 'recipe') {
+        const { recipesService } = await import('@/lib/firestoreService');
+        await recipesService.create(uid, { title, instructions: content, ingredients: [], source: 'ai' });
+      } else {
+        const { notesService } = await import('@/lib/firestoreService');
+        await notesService.create(uid, { title, content, source: 'ai' });
+      }
+      toast.success(`Saved to ${cat.label}!`);
+      setSaved(true);
+    } catch {
+      toast.error('Failed to save');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <button onClick={handleSave} disabled={saving || saved}
+      className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-accent mt-2 transition-colors disabled:opacity-50">
+      {saved ? <Check className="w-3 h-3 text-accent" /> : saving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
+      {saved ? `Saved to ${cat.label}` : `Save to ${cat.label}`}
+    </button>
+  );
+}
+
+function MessageBubble({ message, uid }) {
   const isUser = message.role === "user";
   return (
     <motion.div
@@ -141,28 +207,33 @@ function MessageBubble({ message }) {
           <Bot className="w-3.5 h-3.5 text-accent" />
         </div>
       )}
-      <div
-        className={`max-w-[82%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${
-          isUser
-            ? "bg-accent text-accent-foreground rounded-br-sm"
-            : "bg-card border border-border text-foreground rounded-bl-sm"
-        }`}
-      >
-        {isUser ? (
-          <p>{message.content}</p>
-        ) : (
-          <ReactMarkdown
-            className="prose prose-sm prose-invert max-w-none [&>*:first-child]:mt-0 [&>*:last-child]:mb-0"
-            components={{
-              p: ({ children }) => <p className="my-1">{children}</p>,
-              ul: ({ children }) => <ul className="my-1 ml-4 list-disc">{children}</ul>,
-              ol: ({ children }) => <ol className="my-1 ml-4 list-decimal">{children}</ol>,
-              li: ({ children }) => <li className="my-0.5">{children}</li>,
-              strong: ({ children }) => <strong className="text-accent font-semibold">{children}</strong>,
-            }}
-          >
-            {message.content}
-          </ReactMarkdown>
+      <div className={`max-w-[82%] ${isUser ? "" : "flex flex-col"}`}>
+        <div
+          className={`rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${
+            isUser
+              ? "bg-accent text-accent-foreground rounded-br-sm"
+              : "bg-card border border-border text-foreground rounded-bl-sm"
+          }`}
+        >
+          {isUser ? (
+            <p>{message.content}</p>
+          ) : (
+            <ReactMarkdown
+              className="prose prose-sm prose-invert max-w-none [&>*:first-child]:mt-0 [&>*:last-child]:mb-0"
+              components={{
+                p: ({ children }) => <p className="my-1">{children}</p>,
+                ul: ({ children }) => <ul className="my-1 ml-4 list-disc">{children}</ul>,
+                ol: ({ children }) => <ol className="my-1 ml-4 list-decimal">{children}</ol>,
+                li: ({ children }) => <li className="my-0.5">{children}</li>,
+                strong: ({ children }) => <strong className="text-accent font-semibold">{children}</strong>,
+              }}
+            >
+              {message.content}
+            </ReactMarkdown>
+          )}
+        </div>
+        {!isUser && message.content.length > 100 && (
+          <SaveButton content={message.content} uid={uid} />
         )}
       </div>
     </motion.div>
@@ -349,6 +420,18 @@ Format clearly with bold section headings and bullet points.`,
         );
         return { text: typeof suggested === 'string' ? suggested : JSON.stringify(suggested) };
       }
+      case 'save_workout': {
+        setToolStatus('Saving workout to your Fitness section...');
+        await workoutsService.create(uid, {
+          title: args.title,
+          notes: args.content,
+          type: args.type || 'general',
+          source: 'ai',
+          date: new Date().toISOString(),
+        });
+        toast.success(`Workout "${args.title}" saved to Fitness!`);
+        return { success: true, message: `Workout "${args.title}" has been saved to your Fitness section.` };
+      }
       default:
         return { error: `Unknown tool: ${name}` };
     }
@@ -471,7 +554,7 @@ Format clearly with bold section headings and bullet points.`,
         ) : (
           <AnimatePresence initial={false}>
             {messages.map((msg, i) => (
-              <MessageBubble key={i} message={msg} />
+              <MessageBubble key={i} message={msg} uid={uid} />
             ))}
             {loading && <TypingIndicator status={toolStatus} />}
           </AnimatePresence>

@@ -81,6 +81,43 @@ export async function showLocalNotification(title, body, url = '/') {
   } catch {}
 }
 
+// Check today's weather and alert for rain / storms
+export async function checkWeatherAlerts() {
+  if (Notification.permission !== 'granted') return;
+  const alertedKey = `weather_alert_${new Date().toISOString().slice(0, 10)}`;
+  if (localStorage.getItem(alertedKey)) return; // already alerted today
+
+  try {
+    const pos = await new Promise((res, rej) =>
+      navigator.geolocation.getCurrentPosition(res, rej, { timeout: 6000 })
+    );
+    const { latitude: lat, longitude: lon } = pos.coords;
+    const res = await fetch(
+      `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}` +
+      `&daily=weather_code,precipitation_sum&timezone=auto&forecast_days=1`
+    );
+    if (!res.ok) return;
+    const data = await res.json();
+    const code = data.daily?.weather_code?.[0];
+    const rain = data.daily?.precipitation_sum?.[0] || 0;
+
+    let title = null;
+    let body = null;
+    if (code >= 95) {
+      title = 'Thunderstorm forecast today ⛈️';
+      body = 'Take cover and stay safe — storms expected.';
+    } else if (code >= 80 || (code >= 51 && code <= 67)) {
+      title = 'Rain expected today 🌧️';
+      body = rain > 0 ? `${rain.toFixed(1)}mm of rain forecast — bring an umbrella!` : 'Showers likely today — bring an umbrella!';
+    }
+
+    if (title) {
+      await showLocalNotification(title, body, '/');
+      localStorage.setItem(alertedKey, '1');
+    }
+  } catch {} // location denied or fetch failed — silent
+}
+
 // Check for tasks due today and fire local notifications
 export async function checkTaskReminders(uid) {
   if (Notification.permission !== 'granted') return;
