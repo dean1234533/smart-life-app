@@ -40,11 +40,7 @@ export default function BookingLinks() {
     slug: "",
     active: true,
     rules: {},
-    visibilitySettings: {
-      showGoogleCalendar: true,
-      showOutlookCalendar: true,
-      showAppleCalendar: true,
-    },
+    slotDurationMinutes: 30,
   });
 
   useEffect(() => { if (uid) loadGlobalRules(uid); }, [uid]);
@@ -67,7 +63,7 @@ export default function BookingLinks() {
         const slugRef = doc(firestore, "slugIndex", link.slug);
         const slugSnap = await getDoc(slugRef);
         if (!slugSnap.exists()) {
-          await setDoc(slugRef, { uid: userId, linkId: link.id, active: link.active !== false, title: link.title || '' });
+          await setDoc(slugRef, { uid: userId, linkId: link.id, active: link.active !== false, title: link.title || '', slotDurationMinutes: link.slotDurationMinutes || 30 });
         }
       }
     } catch { /* non-blocking */ }
@@ -90,14 +86,14 @@ export default function BookingLinks() {
       try {
         const { firestore } = await import("@/lib/firebase");
         const { doc, setDoc } = await import("firebase/firestore");
-        await setDoc(doc(firestore, "slugIndex", data.slug), { uid, linkId: link.id, active: data.active !== false, title: data.title || '' });
+        await setDoc(doc(firestore, "slugIndex", data.slug), { uid, linkId: link.id, active: data.active !== false, title: data.title || '', slotDurationMinutes: data.slotDurationMinutes || 30 });
       } catch { /* non-blocking — ?uid= fallback still works */ }
       return link;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["bookingLinks", uid] });
       setShowNew(false);
-      setNewLink({ title: "", slug: "", active: true, rules: {}, visibilitySettings: { showGoogleCalendar: true, showOutlookCalendar: true, showAppleCalendar: true } });
+      setNewLink({ title: "", slug: "", active: true, rules: {}, slotDurationMinutes: 30 });
       toast.success("Booking link created");
     },
   });
@@ -112,6 +108,7 @@ export default function BookingLinks() {
           const patch = {};
           if ("active" in data) patch.active = data.active;
           if ("title" in data) patch.title = data.title;
+          if ("slotDurationMinutes" in data) patch.slotDurationMinutes = data.slotDurationMinutes;
           if (Object.keys(patch).length) await updateDoc(doc(firestore, "slugIndex", slug), patch);
         } catch { /* non-blocking */ }
       }
@@ -287,21 +284,18 @@ export default function BookingLinks() {
             </div>
 
             <div>
-              <label className="text-xs text-muted-foreground mb-2 block">Calendar visibility</label>
-              {[
-                { key: "showGoogleCalendar", label: "Google Calendar" },
-                { key: "showOutlookCalendar", label: "Outlook Calendar" },
-                { key: "showAppleCalendar", label: "Apple Calendar" },
-              ].map(({ key, label }) => (
-                <div key={key} className="flex items-center justify-between py-1.5">
-                  <span className="text-sm">{label}</span>
-                  <Switch
-                    checked={newLink.visibilitySettings[key]}
-                    onCheckedChange={v => setNewLink(l => ({
-                      ...l, visibilitySettings: { ...l.visibilitySettings, [key]: v }
-                    }))} />
-                </div>
-              ))}
+              <label className="text-xs text-muted-foreground mb-2 block">Meeting duration</label>
+              <div className="grid grid-cols-4 gap-2">
+                {[15, 30, 45, 60].map(mins => (
+                  <button key={mins} type="button"
+                    onClick={() => setNewLink(l => ({ ...l, slotDurationMinutes: mins }))}
+                    className={`py-2 rounded-xl text-sm font-medium transition-all ${newLink.slotDurationMinutes === mins
+                      ? "bg-accent text-accent-foreground"
+                      : "bg-muted text-muted-foreground hover:text-foreground"}`}>
+                    {mins}min
+                  </button>
+                ))}
+              </div>
             </div>
 
             <div className="flex gap-2">
@@ -369,22 +363,18 @@ export default function BookingLinks() {
                   {expandedId === link.id && (
                     <motion.div initial={{ height: 0 }} animate={{ height: "auto" }} exit={{ height: 0 }} className="overflow-hidden">
                       <div className="px-4 pb-4 border-t border-border/40 pt-3 space-y-3">
-                        <p className="text-xs font-heading font-semibold text-muted-foreground uppercase tracking-wider">Calendar Visibility</p>
-                        {[
-                          { key: "showGoogleCalendar", label: "Google Calendar" },
-                          { key: "showOutlookCalendar", label: "Outlook Calendar" },
-                          { key: "showAppleCalendar", label: "Apple Calendar" },
-                        ].map(({ key, label }) => (
-                          <div key={key} className="flex items-center justify-between">
-                            <span className="text-sm">{label}</span>
-                            <Switch
-                              checked={link.visibilitySettings?.[key] ?? true}
-                              onCheckedChange={v => updateMutation.mutate({
-                                id: link.id,
-                                data: { visibilitySettings: { ...link.visibilitySettings, [key]: v } }
-                              })} />
-                          </div>
-                        ))}
+                        <p className="text-xs font-heading font-semibold text-muted-foreground uppercase tracking-wider">Meeting Duration</p>
+                        <div className="grid grid-cols-4 gap-2">
+                          {[15, 30, 45, 60].map(mins => (
+                            <button key={mins} type="button"
+                              onClick={() => updateMutation.mutate({ id: link.id, data: { slotDurationMinutes: mins }, slug: link.slug })}
+                              className={`py-2 rounded-xl text-sm font-medium transition-all ${(link.slotDurationMinutes || 30) === mins
+                                ? "bg-accent text-accent-foreground"
+                                : "bg-muted text-muted-foreground hover:text-foreground"}`}>
+                              {mins}min
+                            </button>
+                          ))}
+                        </div>
 
                         <div className="pt-2 border-t border-border/40">
                           <p className="text-xs font-heading font-semibold text-muted-foreground uppercase tracking-wider mb-2">Booking URL</p>

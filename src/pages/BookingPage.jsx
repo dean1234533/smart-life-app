@@ -110,6 +110,9 @@ export default function BookingPage() {
           foundLinkId = entry.linkId;
           if (entry.active === false) { setError("This booking link is inactive."); setLoading(false); return; }
           foundTitle = entry.title || "Book a Time";
+          if (entry.slotDurationMinutes) {
+            setWorkingHours(wh => ({ ...wh, slotDurationMinutes: entry.slotDurationMinutes }));
+          }
         }
       }
 
