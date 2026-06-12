@@ -100,9 +100,10 @@ export default function BookingPage() {
       let foundUid = params.get("uid") || null;
       let foundLinkId = null;
       let foundTitle = "Book a Time";
+      let linkSlotDuration = null;
 
       if (slug) {
-        // slugIndex is publicly readable — contains uid, linkId, active, title
+        // slugIndex is publicly readable — contains uid, linkId, active, title, slotDurationMinutes
         const slugSnap = await getDoc(doc(firestore, "slugIndex", slug));
         if (slugSnap.exists()) {
           const entry = slugSnap.data();
@@ -110,9 +111,7 @@ export default function BookingPage() {
           foundLinkId = entry.linkId;
           if (entry.active === false) { setError("This booking link is inactive."); setLoading(false); return; }
           foundTitle = entry.title || "Book a Time";
-          if (entry.slotDurationMinutes) {
-            setWorkingHours(wh => ({ ...wh, slotDurationMinutes: entry.slotDurationMinutes }));
-          }
+          if (entry.slotDurationMinutes) linkSlotDuration = entry.slotDurationMinutes;
         }
       }
 
@@ -122,16 +121,29 @@ export default function BookingPage() {
       setLinkId(foundLinkId);
       setLinkTitle(foundTitle);
 
-      // Load owner's availability settings from Worker KV (public — no auth needed)
+      // Load owner's availability settings from Worker KV, then apply per-link duration override
       if (WORKER_URL) {
         try {
           const settingsRes = await fetch(`${WORKER_URL}/availability/settings/${encodeURIComponent(foundUid)}`);
           if (settingsRes.ok) {
             const settings = await settingsRes.json();
-            if (settings?.workingHours) setWorkingHours({ ...DEFAULT_WORKING_HOURS, ...settings.workingHours });
+            if (settings?.workingHours) {
+              const merged = { ...DEFAULT_WORKING_HOURS, ...settings.workingHours };
+              // Per-link duration always wins over the global availability setting
+              if (linkSlotDuration) merged.slotDurationMinutes = linkSlotDuration;
+              setWorkingHours(merged);
+            } else if (linkSlotDuration) {
+              setWorkingHours(wh => ({ ...wh, slotDurationMinutes: linkSlotDuration }));
+            }
             if (settings?.hiddenSlots) setHiddenSlots(settings.hiddenSlots || []);
+          } else if (linkSlotDuration) {
+            setWorkingHours(wh => ({ ...wh, slotDurationMinutes: linkSlotDuration }));
           }
-        } catch {} // silently fall back to defaults
+        } catch {
+          if (linkSlotDuration) setWorkingHours(wh => ({ ...wh, slotDurationMinutes: linkSlotDuration }));
+        }
+      } else if (linkSlotDuration) {
+        setWorkingHours(wh => ({ ...wh, slotDurationMinutes: linkSlotDuration }));
       }
 
       // Load existing confirmed bookings (silently ignore if Firestore rules block unauthenticated reads)
