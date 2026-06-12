@@ -1,11 +1,12 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
-import { ChefHat, ArrowLeft, Trash2, ChevronDown, ChevronRight, ShoppingCart } from "lucide-react";
+import { ChefHat, ArrowLeft, Trash2, ChevronDown, ChevronRight, ShoppingCart, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
+import ReactMarkdown from "react-markdown";
 import { recipesService, shoppingListsService } from "@/lib/firestoreService";
 import { useCurrentUid } from "@/hooks/useCurrentUid";
 
@@ -68,12 +69,12 @@ export default function Recipes() {
                   className="w-full flex items-center gap-3 p-4 text-left"
                 >
                   <div className="w-10 h-10 rounded-xl bg-purple-500/10 flex items-center justify-center shrink-0">
-                    <ChefHat className="w-5 h-5 text-purple-400" />
+                    {recipe.source === 'ai' ? <Sparkles className="w-5 h-5 text-accent" /> : <ChefHat className="w-5 h-5 text-purple-400" />}
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="font-heading font-semibold text-sm truncate">{recipe.title}</p>
                     <p className="text-xs text-muted-foreground">
-                      {(recipe.ingredients || []).length} ingredients
+                      {recipe.source === 'ai' ? 'AI Recipe' : `${(recipe.ingredients || []).length} ingredients`}
                       {recipe.mealPlanDays?.length ? ` · ${recipe.mealPlanDays.join(", ")}` : ""}
                     </p>
                   </div>
@@ -101,7 +102,21 @@ export default function Recipes() {
                         {recipe.instructions && (
                           <div>
                             <h4 className="text-xs font-heading font-semibold text-muted-foreground uppercase tracking-wider mb-2">Instructions</h4>
-                            <p className="text-sm leading-relaxed text-muted-foreground">{recipe.instructions}</p>
+                            <ReactMarkdown
+                              className="prose prose-sm prose-invert max-w-none [&>*:first-child]:mt-0 [&>*:last-child]:mb-0"
+                              components={{
+                                p: ({ children }) => <p className="text-sm leading-relaxed text-muted-foreground my-1">{children}</p>,
+                                ul: ({ children }) => <ul className="my-1 ml-4 list-disc text-muted-foreground text-sm">{children}</ul>,
+                                ol: ({ children }) => <ol className="my-1 ml-4 list-decimal text-muted-foreground text-sm">{children}</ol>,
+                                li: ({ children }) => <li className="my-0.5">{children}</li>,
+                                strong: ({ children }) => <strong className="text-accent font-semibold">{children}</strong>,
+                                h1: ({ children }) => <h1 className="text-sm font-bold text-foreground mt-3 mb-1">{children}</h1>,
+                                h2: ({ children }) => <h2 className="text-sm font-bold text-foreground mt-3 mb-1">{children}</h2>,
+                                h3: ({ children }) => <h3 className="text-xs font-semibold text-foreground mt-2 mb-1">{children}</h3>,
+                              }}
+                            >
+                              {recipe.instructions}
+                            </ReactMarkdown>
                           </div>
                         )}
                         <Button size="sm" variant="outline"

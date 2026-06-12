@@ -143,8 +143,9 @@ const SUGGESTIONS = [
 ];
 
 const SAVE_CATEGORIES = [
-  { key: 'workout', label: 'Fitness', keywords: ['workout', 'exercise', 'sets', 'reps', 'warm-up', 'cool-down', 'training', 'hiit', 'cardio', 'squat', 'push-up'] },
-  { key: 'recipe', label: 'Recipes', keywords: ['ingredient', 'ingredients', 'recipe', 'cook', 'bake', 'tablespoon', 'teaspoon', 'serves', 'preheat', 'simmer', 'dice'] },
+  { key: 'workout', label: 'Fitness', keywords: ['warm-up', 'cool-down', 'sets', 'reps', 'hiit', 'squat', 'push-up', 'pull-up', 'cardio', 'strength training', 'workout plan', 'exercise routine'] },
+  { key: 'recipe', label: 'Recipes', keywords: ['ingredients', 'tablespoon', 'teaspoon', 'serves', 'preheat', 'simmer', 'dice', 'chop', 'bake', 'fry', 'boil', 'cup of', 'grams', '½', '¼'] },
+  { key: 'shopping', label: 'Shopping', keywords: ['shopping list', 'grocery', 'fresh produce', 'store cupboard', 'dairy', 'bakery', 'to buy', 'supermarket', 'frozen', 'aisle', 'meat &', 'fruit &'] },
   { key: 'note', label: 'Notes', keywords: [] },
 ];
 
@@ -153,7 +154,17 @@ function detectCategory(text) {
   for (const cat of SAVE_CATEGORIES) {
     if (cat.keywords.some(kw => lower.includes(kw))) return cat;
   }
-  return SAVE_CATEGORIES[SAVE_CATEGORIES.length - 1]; // default: note
+  return SAVE_CATEGORIES[SAVE_CATEGORIES.length - 1];
+}
+
+// Parse markdown bullet points into shopping items
+function parseShoppingItems(text) {
+  return text.split('\n')
+    .map(l => {
+      const m = l.match(/^[\s]*[-*•][\s]+(.+)/) || l.match(/^[\s]*\d+\.[\s]+(.+)/);
+      return m ? m[1].replace(/\*\*/g, '').trim() : null;
+    })
+    .filter(l => l && l.length > 1 && l.length < 100);
 }
 
 function SaveButton({ content, uid }) {
@@ -165,13 +176,27 @@ function SaveButton({ content, uid }) {
     if (!uid || saved || saving) return;
     setSaving(true);
     try {
-      const title = content.split('\n').find(l => l.trim())?.replace(/^#+\s*/, '').slice(0, 60) || 'AI Response';
+      const title = content.split('\n').find(l => l.trim())?.replace(/^#+\s*\**/,'').replace(/\**/,'').trim().slice(0, 60) || 'AI Response';
+
       if (cat.key === 'workout') {
         const { workoutsService } = await import('@/lib/firestoreService');
         await workoutsService.create(uid, { name: title, notes: content, type: 'general', source: 'ai', date: new Date().toISOString() });
       } else if (cat.key === 'recipe') {
         const { recipesService } = await import('@/lib/firestoreService');
-        await recipesService.create(uid, { title, instructions: content, ingredients: [], source: 'ai' });
+        // Extract ingredients from bullet lines in the content
+        const ingredientSection = content.match(/ingredient[s]?([\s\S]*?)(?:##|instruction|method|steps|direction)/i);
+        const ingredients = ingredientSection
+          ? parseShoppingItems(ingredientSection[0])
+          : [];
+        await recipesService.create(uid, { title, instructions: content, ingredients, source: 'ai' });
+      } else if (cat.key === 'shopping') {
+        const { shoppingListsService } = await import('@/lib/firestoreService');
+        const items = parseShoppingItems(content).map(name => ({ name, checked: false }));
+        await shoppingListsService.create(uid, {
+          title: title.replace(/shopping list/i, '').trim() || 'Shopping List',
+          items: items.length ? items : [{ name: content.slice(0, 60), checked: false }],
+          source: 'ai',
+        });
       } else {
         const { notesService } = await import('@/lib/firestoreService');
         await notesService.create(uid, { title, content, source: 'ai' });
