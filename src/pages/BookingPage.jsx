@@ -22,26 +22,42 @@ const DEFAULT_WORKING_HOURS = {
 function computeFreeSlots(busyTimes, workingHours, hiddenSlots, existingBookings, date) {
   const { slotDurationMinutes, bufferMinutes = 0, perDaySchedule, workDays, startTime, endTime } = workingHours;
   const dayOfWeek = getDay(date);
+  const now = new Date();
 
-  let dayStart, dayEnd;
+  // New format: explicit per-day slot times
   if (perDaySchedule) {
     const cfg = perDaySchedule[dayOfWeek];
-    if (!cfg?.enabled) return [];
-    dayStart = cfg.start;
-    dayEnd = cfg.end;
-  } else {
-    if (!workDays?.includes(dayOfWeek)) return [];
-    dayStart = startTime;
-    dayEnd = endTime;
+    if (!cfg?.enabled || !cfg.slots?.length) return [];
+    return cfg.slots.flatMap(slotTime => {
+      const [h, m] = slotTime.split(":").map(Number);
+      const slotStart = new Date(date);
+      slotStart.setHours(h, m, 0, 0);
+      if (slotStart <= now) return [];
+      const slotEnd = new Date(slotStart.getTime() + slotDurationMinutes * 60000);
+      const isBusy = busyTimes.some(ev => {
+        const evStart = new Date(ev.start);
+        const evEnd   = new Date(ev.end || new Date(evStart.getTime() + 3600000));
+        return slotStart < evEnd && slotEnd > evStart;
+      });
+      const isHidden  = hiddenSlots.includes(slotStart.toISOString());
+      const isBooked  = existingBookings.some(b => {
+        if (!b.confirmed) return false;
+        const bd = b.slot?.toDate ? b.slot.toDate() : new Date(b.slot);
+        return Math.abs(bd.getTime() - slotStart.getTime()) < slotDurationMinutes * 60000;
+      });
+      if (isBusy || isHidden || isBooked) return [];
+      return [{ start: slotStart.toISOString(), end: slotEnd.toISOString(), label: slotTime, duration: slotDurationMinutes }];
+    });
   }
 
-  const [sh, sm] = dayStart.split(":").map(Number);
-  const [eh, em] = dayEnd.split(":").map(Number);
+  // Legacy format: start/end range
+  if (!workDays?.includes(dayOfWeek)) return [];
+  const [sh, sm] = (startTime || "09:00").split(":").map(Number);
+  const [eh, em] = (endTime   || "18:00").split(":").map(Number);
   const slots = [];
   let current = sh * 60 + sm;
   const endMinutes = eh * 60 + em;
   const step = slotDurationMinutes + bufferMinutes;
-  const now = new Date();
   while (current + slotDurationMinutes <= endMinutes) {
     const slotStart = new Date(date);
     slotStart.setHours(Math.floor(current / 60), current % 60, 0, 0);

@@ -7,17 +7,20 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Switch } from "@/components/ui/switch";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
 import { bookingLinksService, getOrCreateUser } from "@/lib/firestoreService";
 import { useCurrentUid } from "@/hooks/useCurrentUid";
 
 const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const ALL_TIMES = Array.from({ length: 36 }, (_, i) => {
+  const mins = 300 + i * 30;
+  return `${String(Math.floor(mins / 60)).padStart(2, "0")}:${String(mins % 60).padStart(2, "0")}`;
+});
 
-function makeDefaultSchedule(enabledDays = [1,2,3,4,5]) {
+function makeDefaultSchedule() {
   return Object.fromEntries(
-    [0,1,2,3,4,5,6].map(i => [i, { enabled: enabledDays.includes(i), start: "09:00", end: "18:00" }])
+    [0,1,2,3,4,5,6].map(i => [i, { enabled: i >= 1 && i <= 5, slots: [] }])
   );
 }
 
@@ -56,20 +59,14 @@ export default function BookingLinks() {
     try {
       const profile = await getOrCreateUser(userId);
       if (profile?.globalBookingRules) {
-        const r = profile.globalBookingRules;
-        // Migrate old format (noBookingBefore/After/weekdaysOnly) to per-day schedule
-        if (!r.schedule) {
-          const enabledDays = r.weekdaysOnly !== false ? [1,2,3,4,5] : [0,1,2,3,4,5,6];
-          r.schedule = makeDefaultSchedule(enabledDays);
-          if (r.noBookingBefore || r.noBookingAfter) {
-            Object.keys(r.schedule).forEach(i => {
-              if (r.schedule[i].enabled) {
-                r.schedule[i].start = r.noBookingBefore || "09:00";
-                r.schedule[i].end = r.noBookingAfter || "18:00";
-              }
-            });
+        const r = { ...profile.globalBookingRules };
+        if (!r.schedule) r.schedule = makeDefaultSchedule();
+        // Migrate old {enabled,start,end} format to {enabled,slots:[]}
+        Object.keys(r.schedule).forEach(i => {
+          if (r.schedule[i].start !== undefined && !r.schedule[i].slots) {
+            r.schedule[i] = { enabled: r.schedule[i].enabled, slots: [] };
           }
-        }
+        });
         setGlobalRules({ ...DEFAULT_RULES, ...r });
       }
     } catch { /* non-blocking */ }
@@ -227,53 +224,59 @@ export default function BookingLinks() {
             </div>
           </div>
 
-          {/* Per-day schedule */}
+          {/* Per-day slot picker */}
           <div className="space-y-2">
-            <label className="text-sm text-muted-foreground">Available days & hours</label>
+            <label className="text-sm text-muted-foreground">Available days & session times</label>
             <div className="flex gap-1">
               {DAY_LABELS.map((d, i) => {
-                const cfg = globalRules.schedule?.[i] ?? { enabled: false };
+                const cfg = globalRules.schedule?.[i] ?? { enabled: false, slots: [] };
+                const count = cfg.slots?.length ?? 0;
                 return (
                   <button key={d} onClick={() => setSelectedRuleDay(i)}
                     className={`flex-1 py-2 rounded-lg text-[11px] font-medium transition-all flex flex-col items-center gap-0.5
-                      ${cfg.enabled ? "bg-accent text-accent-foreground" : "bg-muted text-muted-foreground"}
+                      ${cfg.enabled && count > 0 ? "bg-accent text-accent-foreground" : cfg.enabled ? "bg-accent/40 text-accent-foreground" : "bg-muted text-muted-foreground"}
                       ${selectedRuleDay === i ? "ring-2 ring-accent ring-offset-2 ring-offset-background" : ""}`}>
                     <span>{d}</span>
-                    {cfg.enabled && <span className="text-[9px] opacity-70">{cfg.start?.slice(0,5)}</span>}
+                    <span className="text-[9px] opacity-80">{count > 0 ? `${count}` : "off"}</span>
                   </button>
                 );
               })}
             </div>
 
             {selectedRuleDay !== null && (() => {
-              const cfg = globalRules.schedule?.[selectedRuleDay] ?? { enabled: false, start: "09:00", end: "18:00" };
-              const update = (patch) => setGlobalRules(r => ({
-                ...r,
-                schedule: { ...r.schedule, [selectedRuleDay]: { ...cfg, ...patch } }
-              }));
+              const cfg = globalRules.schedule?.[selectedRuleDay] ?? { enabled: false, slots: [] };
+              const selected = new Set(cfg.slots ?? []);
+              const toggle = (t) => {
+                const next = new Set(selected);
+                next.has(t) ? next.delete(t) : next.add(t);
+                setGlobalRules(r => ({
+                  ...r,
+                  schedule: { ...r.schedule, [selectedRuleDay]: { enabled: next.size > 0, slots: [...next].sort() } }
+                }));
+              };
               return (
-                <div className="p-3 rounded-xl bg-muted/40 border border-border/50 space-y-2">
+                <div className="space-y-2">
                   <div className="flex items-center justify-between">
                     <span className="text-sm font-medium">{DAY_LABELS[selectedRuleDay]}</span>
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs text-muted-foreground">{cfg.enabled ? "Available" : "Unavailable"}</span>
-                      <Switch checked={cfg.enabled} onCheckedChange={v => update({ enabled: v })} />
-                    </div>
+                    {selected.size > 0 && (
+                      <button onClick={() => setGlobalRules(r => ({
+                        ...r, schedule: { ...r.schedule, [selectedRuleDay]: { enabled: false, slots: [] } }
+                      }))} className="text-xs text-muted-foreground hover:text-destructive">Clear</button>
+                    )}
                   </div>
-                  {cfg.enabled && (
-                    <div className="flex gap-2">
-                      <div className="flex-1">
-                        <label className="text-xs text-muted-foreground mb-1 block">Start</label>
-                        <Input type="time" value={cfg.start} onChange={e => update({ start: e.target.value })}
-                          className="h-8 text-xs rounded-lg" />
-                      </div>
-                      <div className="flex-1">
-                        <label className="text-xs text-muted-foreground mb-1 block">End</label>
-                        <Input type="time" value={cfg.end} onChange={e => update({ end: e.target.value })}
-                          className="h-8 text-xs rounded-lg" />
-                      </div>
-                    </div>
-                  )}
+                  <div className="grid grid-cols-4 gap-1">
+                    {ALL_TIMES.map(t => (
+                      <button key={t} onClick={() => toggle(t)}
+                        className={`py-1.5 rounded-lg text-[11px] font-medium transition-all ${selected.has(t)
+                          ? "bg-accent text-accent-foreground"
+                          : "bg-muted text-muted-foreground hover:bg-muted/70"}`}>
+                        {t}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="text-[10px] text-muted-foreground text-center">
+                    {selected.size === 0 ? "Tap times to mark as available" : `${selected.size} slot${selected.size > 1 ? "s" : ""}`}
+                  </p>
                 </div>
               );
             })()}
