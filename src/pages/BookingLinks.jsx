@@ -46,6 +46,7 @@ export default function BookingLinks() {
   const [globalRules, setGlobalRules] = useState(DEFAULT_RULES);
   const [savingRules, setSavingRules] = useState(false);
   const [selectedRuleDay, setSelectedRuleDay] = useState(1);
+  const [busyTimes, setBusyTimes] = useState([]);
 
   const [newLink, setNewLink] = useState({
     title: "",
@@ -55,7 +56,18 @@ export default function BookingLinks() {
     slotDurationMinutes: 30,
   });
 
-  useEffect(() => { if (uid) loadGlobalRules(uid); }, [uid]);
+  useEffect(() => {
+    if (!uid) return;
+    loadGlobalRules(uid);
+    if (WORKER_URL) {
+      const now = new Date();
+      const twoWeeks = new Date(now.getTime() + 14 * 24 * 3600000);
+      fetch(`${WORKER_URL}/calendar/freebusy/${encodeURIComponent(uid)}?timeMin=${now.toISOString()}&timeMax=${twoWeeks.toISOString()}`)
+        .then(r => r.ok ? r.json() : { busyTimes: [] })
+        .then(d => setBusyTimes(d.busyTimes || []))
+        .catch(() => {});
+    }
+  }, [uid]);
 
   const loadGlobalRules = async (userId) => {
     try {
@@ -151,6 +163,31 @@ export default function BookingLinks() {
     },
   });
 
+  const checkSlotConflict = (dayIndex, slotTime) => {
+    if (!busyTimes.length) return false;
+    const now = new Date();
+    for (let d = 0; d < 14; d++) {
+      const date = new Date(now);
+      date.setDate(date.getDate() + d);
+      date.setHours(0, 0, 0, 0);
+      if (date.getDay() !== dayIndex) continue;
+      const [h, m] = slotTime.split(":").map(Number);
+      const slotStart = new Date(date);
+      slotStart.setHours(h, m, 0, 0);
+      if (slotStart <= now) continue;
+      const conflicts = [15, 30, 45, 60].some(dur => {
+        const slotEnd = new Date(slotStart.getTime() + dur * 60000);
+        return busyTimes.some(ev => {
+          const evStart = new Date(ev.start);
+          const evEnd = new Date(ev.end || new Date(evStart.getTime() + 3600000));
+          return slotStart < evEnd && slotEnd > evStart;
+        });
+      });
+      if (conflicts) return true;
+    }
+    return false;
+  };
+
   const saveGlobalRules = async () => {
     if (!uid) return;
     setSavingRules(true);
@@ -158,12 +195,10 @@ export default function BookingLinks() {
       const { updateUserDoc } = await import("@/lib/firestoreService");
       await updateUserDoc(uid, { globalBookingRules: globalRules });
 
-      // Also push schedule to Worker KV so the public booking page uses it
       if (WORKER_URL && globalRules.schedule) {
         const { firebaseAuth } = await import("@/lib/firebase");
         const idToken = await firebaseAuth.currentUser?.getIdToken().catch(() => null);
         if (idToken) {
-          // Merge the schedule into working hours format that BookingPage expects
           const workingHours = {
             slotDurationMinutes: globalRules.slotDurationMinutes || 60,
             perDaySchedule: globalRules.schedule,
@@ -176,58 +211,25 @@ export default function BookingLinks() {
         }
       }
 
-      // Check for calendar conflicts before showing the final save toast
-      let conflictMsg = null;
-      if (WORKER_URL && globalRules.schedule) {
-        try {
-          const now = new Date();
-          const twoWeeks = new Date(now.getTime() + 14 * 24 * 3600000);
-          const busyRes = await fetch(
-            `${WORKER_URL}/calendar/freebusy/${encodeURIComponent(uid)}?timeMin=${now.toISOString()}&timeMax=${twoWeeks.toISOString()}`
-          );
-          if (busyRes.ok) {
-            const data = await busyRes.json();
-            const busyTimes = data.busyTimes || [];
-            const durations = [15, 30, 45, 60];
-            const conflicts = [];
-            for (let d = 0; d < 14; d++) {
-              const date = new Date(now);
-              date.setDate(date.getDate() + d);
-              date.setHours(0, 0, 0, 0);
-              const dow = date.getDay();
-              const cfg = globalRules.schedule[dow];
-              if (!cfg?.enabled || !cfg.slots?.length) continue;
-              for (const slotTime of cfg.slots) {
-                const [h, m] = slotTime.split(":").map(Number);
-                const slotStart = new Date(date);
-                slotStart.setHours(h, m, 0, 0);
-                if (slotStart <= now) continue;
-                const isBusy = durations.some(dur => {
-                  const slotEnd = new Date(slotStart.getTime() + dur * 60000);
-                  return busyTimes.some(ev => {
-                    const evStart = new Date(ev.start);
-                    const evEnd = new Date(ev.end || new Date(evStart.getTime() + 3600000));
-                    return slotStart < evEnd && slotEnd > evStart;
-                  });
-                });
-                if (isBusy) {
-                  const label = `${DAY_LABELS[dow]} ${slotTime}`;
-                  if (!conflicts.includes(label)) conflicts.push(label);
-                }
-              }
-            }
-            if (conflicts.length > 0) {
-              conflictMsg = `⚠️ ${conflicts.length} slot${conflicts.length > 1 ? 's' : ''} clash with your calendar in the next 2 weeks: ${conflicts.join(', ')}. These won't show to clients.`;
-            }
-          }
-        } catch (e) {
-          console.error('Calendar conflict check failed:', e);
-        }
-      }
-
       toast.success("Booking rules saved");
-      if (conflictMsg) {
-        setTimeout(() => toast.warning(conflictMsg, { duration: 12000 }), 400);
+
+      // Warn about any saved slots that clash with the already-loaded calendar data
+      if (busyTimes.length > 0 && globalRules.schedule) {
+        const conflicts = [];
+        Object.entries(globalRules.schedule).forEach(([dow, cfg]) => {
+          if (!cfg.enabled || !cfg.slots?.length) return;
+          cfg.slots.forEach(slotTime => {
+            if (checkSlotConflict(Number(dow), slotTime)) {
+              conflicts.push(`${DAY_LABELS[Number(dow)]} ${slotTime}`);
+            }
+          });
+        });
+        if (conflicts.length > 0) {
+          setTimeout(() => toast.warning(
+            `${conflicts.join(', ')} overlap${conflicts.length === 1 ? 's' : ''} with your calendar — won't show to clients`,
+            { duration: 12000 }
+          ), 300);
+        }
       }
     } catch {
       toast.error("Failed to save rules");
@@ -322,7 +324,14 @@ export default function BookingLinks() {
               const selected = new Set(cfg.slots ?? []);
               const toggle = (t) => {
                 const next = new Set(selected);
-                next.has(t) ? next.delete(t) : next.add(t);
+                if (next.has(t)) {
+                  next.delete(t);
+                } else {
+                  next.add(t);
+                  if (checkSlotConflict(selectedRuleDay, t)) {
+                    toast.warning(`${t} overlaps with your calendar — it won't show to clients`, { duration: 6000 });
+                  }
+                }
                 setGlobalRules(r => ({
                   ...r,
                   schedule: { ...r.schedule, [selectedRuleDay]: { enabled: next.size > 0, slots: [...next].sort() } }
