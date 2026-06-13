@@ -141,7 +141,7 @@ async function sendWebPush(subscription, payload, env) {
 function corsHeaders(env) {
   return {
     'Access-Control-Allow-Origin': env.APP_ORIGIN || 'https://smart-life-app.pages.dev',
-    'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
+    'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type, Authorization',
   };
 }
