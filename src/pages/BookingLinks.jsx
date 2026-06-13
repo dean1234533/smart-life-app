@@ -12,6 +12,8 @@ import { toast } from "sonner";
 import { bookingLinksService, getOrCreateUser } from "@/lib/firestoreService";
 import { useCurrentUid } from "@/hooks/useCurrentUid";
 
+const WORKER_URL = import.meta.env.VITE_CALENDAR_WORKER_URL || '';
+
 const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const ALL_TIMES = Array.from({ length: 36 }, (_, i) => {
   const mins = 300 + i * 30;
@@ -154,7 +156,26 @@ export default function BookingLinks() {
     try {
       const { updateUserDoc } = await import("@/lib/firestoreService");
       await updateUserDoc(uid, { globalBookingRules: globalRules });
-      toast.success("Global booking rules saved");
+
+      // Also push schedule to Worker KV so the public booking page uses it
+      if (WORKER_URL && globalRules.schedule) {
+        const { firebaseAuth } = await import("@/lib/firebase");
+        const idToken = await firebaseAuth.currentUser?.getIdToken().catch(() => null);
+        if (idToken) {
+          // Merge the schedule into working hours format that BookingPage expects
+          const workingHours = {
+            slotDurationMinutes: globalRules.slotDurationMinutes || 60,
+            perDaySchedule: globalRules.schedule,
+          };
+          await fetch(`${WORKER_URL}/availability/settings`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json', Authorization: `Firebase ${idToken}` },
+            body: JSON.stringify({ workingHours }),
+          }).catch(() => {});
+        }
+      }
+
+      toast.success("Booking rules saved");
     } catch {
       toast.error("Failed to save rules");
     } finally {
