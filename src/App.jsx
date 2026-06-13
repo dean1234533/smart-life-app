@@ -41,7 +41,6 @@ import AdminPanel from '@/pages/AdminPanel';
 import Privacy from '@/pages/Privacy';
 import Terms from '@/pages/Terms';
 import VPN from '@/pages/VPN';
-import LandingPage from '@/pages/LandingPage';
 
 const ADMIN_UID = import.meta.env.VITE_ADMIN_UID || '';
 
@@ -103,7 +102,7 @@ const AuthenticatedApp = () => {
       <Route path="/forgot-password" element={<ForgotPassword />} />
       <Route path="/reset-password" element={<ResetPassword />} />
 
-      <Route element={<ProtectedRoute unauthenticatedElement={<Navigate to="/landing" replace />} />}>
+      <Route element={<ProtectedRoute unauthenticatedElement={<Navigate to="/login" replace />} />}>
         <Route element={<AppLayout />}>
           <Route path="/" element={<Home />} />
           <Route path="/notes" element={<Notes />} />
@@ -131,8 +130,7 @@ const AuthenticatedApp = () => {
       </Route>
 
       {/* Public routes — no auth required (opened on TV, shared devices, etc.) */}
-      <Route path="/landing" element={<LandingPage />} />
-      <Route path="/mirror" element={<Mirror />} />
+<Route path="/mirror" element={<Mirror />} />
       <Route path="/book" element={<BookingPage />} />
       <Route path="/book/:slug" element={<BookingPage />} />
       <Route path="/privacy" element={<Privacy />} />

@@ -138,18 +138,27 @@ async function sendWebPush(subscription, payload, env) {
 
 // ───────────────────────────────────────────────────────────────────────────
 
-function corsHeaders(env) {
+const ALLOWED_ORIGINS = [
+  'https://smart-life-app.pages.dev',
+  'https://dbworkouts.co.uk',
+  'https://www.dbworkouts.co.uk',
+];
+
+function corsHeaders(env, request) {
+  const origin = request?.headers?.get('Origin') || '';
+  const appOrigin = env.APP_ORIGIN || 'https://smart-life-app.pages.dev';
+  const allowedOrigin = ALLOWED_ORIGINS.includes(origin) ? origin : appOrigin;
   return {
-    'Access-Control-Allow-Origin': env.APP_ORIGIN || 'https://smart-life-app.pages.dev',
+    'Access-Control-Allow-Origin': allowedOrigin,
     'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type, Authorization',
   };
 }
 
-function json(data, status = 200, env) {
+function json(data, status = 200, env, request) {
   return new Response(JSON.stringify(data), {
     status,
-    headers: { 'Content-Type': 'application/json', ...corsHeaders(env) },
+    headers: { 'Content-Type': 'application/json', ...corsHeaders(env, request) },
   });
 }
 
@@ -167,14 +176,14 @@ export default {
 
     // Preflight
     if (request.method === 'OPTIONS') {
-      return new Response(null, { headers: corsHeaders(env) });
+      return new Response(null, { headers: corsHeaders(env, request) });
     }
 
     try {
       // ── Step 1: Start OAuth flow ────────────────────────────────────────
       if (path === '/auth/google/start' && request.method === 'GET') {
         const idToken = url.searchParams.get('idToken');
-        if (!idToken) return json({ error: 'Missing idToken' }, 400, env);
+        if (!idToken) return json({ error: 'Missing idToken' }, 400, env, request);
 
         const uid = await verifyFirebaseToken(idToken, projectId);
         const redirectUri = `${url.origin}/auth/google/callback`;
@@ -196,7 +205,7 @@ export default {
       if (path === '/auth/google/callback' && request.method === 'GET') {
         const code = url.searchParams.get('code');
         const uid = url.searchParams.get('state');
-        if (!code || !uid) return json({ error: 'Missing code or state' }, 400, env);
+        if (!code || !uid) return json({ error: 'Missing code or state' }, 400, env, request);
 
         const redirectUri = `${url.origin}/auth/google/callback`;
         const resp = await fetch(GOOGLE_TOKEN_URL, {
@@ -213,12 +222,12 @@ export default {
 
         if (!resp.ok) {
           const err = await resp.text();
-          return json({ error: `Token exchange failed: ${err}` }, 500, env);
+          return json({ error: `Token exchange failed: ${err}` }, 500, env, request);
         }
 
         const tokens = await resp.json();
         if (!tokens.refresh_token) {
-          return json({ error: 'No refresh token returned — re-authorize with prompt=consent' }, 400, env);
+          return json({ error: 'No refresh token returned — re-authorize with prompt=consent' }, 400, env, request);
         }
 
         await env.GOOGLE_TOKENS.put(uid, JSON.stringify({
@@ -235,14 +244,14 @@ export default {
       if (path === '/calendar/status' && request.method === 'GET') {
         const uid = await verifyFirebaseToken(extractIdToken(request), projectId);
         const stored = await env.GOOGLE_TOKENS.get(uid, 'json');
-        return json({ connected: !!stored?.refreshToken }, 200, env);
+        return json({ connected: !!stored?.refreshToken }, 200, env, request);
       }
 
       // ── Disconnect ──────────────────────────────────────────────────────
       if (path === '/calendar/disconnect' && request.method === 'DELETE') {
         const uid = await verifyFirebaseToken(extractIdToken(request), projectId);
         await env.GOOGLE_TOKENS.delete(uid);
-        return json({ success: true }, 200, env);
+        return json({ success: true }, 200, env, request);
       }
 
       // ── Fetch events ────────────────────────────────────────────────────
@@ -259,7 +268,7 @@ export default {
         });
         if (!resp.ok) return json({ error: `Google Calendar error ${resp.status}` }, resp.status, env);
         const data = await resp.json();
-        return json({ events: data.items || [] }, 200, env);
+        return json({ events: data.items || [] }, 200, env, request);
       }
 
       // ── Create event ────────────────────────────────────────────────────
@@ -274,14 +283,14 @@ export default {
           body: JSON.stringify(body),
         });
         if (!resp.ok) return json({ error: `Failed to create event: ${resp.status}` }, resp.status, env);
-        return json(await resp.json(), 201, env);
+        return json(await resp.json(), 201, env, request);
       }
 
       // ── Save availability settings (authenticated) ────────────────────────
       if (path === '/availability/settings' && request.method === 'PUT') {
         const uid = await verifyFirebaseToken(extractIdToken(request), projectId);
         const body = await request.json().catch(() => null);
-        if (!body) return json({ error: 'Invalid body' }, 400, env);
+        if (!body) return json({ error: 'Invalid body' }, 400, env, request);
         // Merge with existing entry so schedule and hiddenSlots can be written
         // independently without overwriting each other.
         const existing = await env.GOOGLE_TOKENS.get(`avail:${uid}`, 'json').catch(() => null) || {};
@@ -290,59 +299,59 @@ export default {
           hiddenSlots:  body.hiddenSlots  !== undefined ? body.hiddenSlots  : existing.hiddenSlots,
         };
         await env.GOOGLE_TOKENS.put(`avail:${uid}`, JSON.stringify(merged));
-        return json({ ok: true }, 200, env);
+        return json({ ok: true }, 200, env, request);
       }
 
       // ── Get availability settings (public — booking page reads this) ───────
       if (path.startsWith('/availability/settings/') && request.method === 'GET') {
         const uid = decodeURIComponent(path.split('/')[3] || '');
-        if (!uid) return json({ error: 'Missing uid' }, 400, env);
+        if (!uid) return json({ error: 'Missing uid' }, 400, env, request);
         const stored = await env.GOOGLE_TOKENS.get(`avail:${uid}`, 'json').catch(() => null);
-        return json(stored || { workingHours: null, hiddenSlots: [] }, 200, env);
+        return json(stored || { workingHours: null, hiddenSlots: [] }, 200, env, request);
       }
 
       // ── Store push subscription (authenticated) ────────────────────────────
       if (path === '/push/subscription' && request.method === 'PUT') {
         const uid = await verifyFirebaseToken(extractIdToken(request), projectId);
         const sub = await request.json().catch(() => null);
-        if (!sub?.endpoint) return json({ error: 'Invalid subscription' }, 400, env);
+        if (!sub?.endpoint) return json({ error: 'Invalid subscription' }, 400, env, request);
         await env.GOOGLE_TOKENS.put(`push_sub:${uid}`, JSON.stringify(sub));
-        return json({ ok: true }, 200, env);
+        return json({ ok: true }, 200, env, request);
       }
 
       // ── Remove push subscription (authenticated) ────────────────────────
       if (path === '/push/subscription' && request.method === 'DELETE') {
         const uid = await verifyFirebaseToken(extractIdToken(request), projectId);
         await env.GOOGLE_TOKENS.delete(`push_sub:${uid}`);
-        return json({ ok: true }, 200, env);
+        return json({ ok: true }, 200, env, request);
       }
 
       // Public: get busy times (no auth — booking page calls this)
       if (path.startsWith('/calendar/freebusy/') && request.method === 'GET') {
         const uid = decodeURIComponent(path.split('/')[3] || '');
-        if (!uid) return json({ error: 'Missing uid' }, 400, env);
+        if (!uid) return json({ error: 'Missing uid' }, 400, env, request);
         try {
           const token = await getAccessToken(uid, env);
           const timeMin = url.searchParams.get('timeMin') || new Date().toISOString();
           const timeMax = url.searchParams.get('timeMax') || new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString();
           const params = new URLSearchParams({ timeMin, timeMax, singleEvents: 'true', orderBy: 'startTime', maxResults: '250' });
           const resp = await fetch(`${GOOGLE_CAL_URL}?${params}`, { headers: { Authorization: `Bearer ${token}` } });
-          if (!resp.ok) return json({ busyTimes: [] }, 200, env);
+          if (!resp.ok) return json({ busyTimes: [] }, 200, env, request);
           const data = await resp.json();
           const busyTimes = (data.items || []).map(e => ({
             start: e.start?.dateTime || e.start?.date,
             end: e.end?.dateTime || e.end?.date,
           }));
-          return json({ busyTimes }, 200, env);
+          return json({ busyTimes }, 200, env, request);
         } catch {
-          return json({ busyTimes: [] }, 200, env);
+          return json({ busyTimes: [] }, 200, env, request);
         }
       }
 
       // Public: create a booking in the owner's Google Calendar
       if (path === '/booking/public' && request.method === 'POST') {
         const body = await request.json().catch(() => null);
-        if (!body?.ownerUid || !body?.start || !body?.end) return json({ error: 'Missing required fields' }, 400, env);
+        if (!body?.ownerUid || !body?.start || !body?.end) return json({ error: 'Missing required fields' }, 400, env, request);
         try {
           const token = await getAccessToken(body.ownerUid, env);
           const eventBody = {
@@ -357,7 +366,7 @@ export default {
             headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
             body: JSON.stringify(eventBody),
           });
-          if (!resp.ok) return json({ error: 'Failed to create calendar event' }, 500, env);
+          if (!resp.ok) return json({ error: 'Failed to create calendar event' }, 500, env, request);
           const created = await resp.json();
 
           // Notify the owner via push if they have a subscription
@@ -373,18 +382,18 @@ export default {
             }, env).catch(() => {});
           }
 
-          return json(created, 201, env);
+          return json(created, 201, env, request);
         } catch (err) {
-          return json({ error: err.message }, 500, env);
+          return json({ error: err.message }, 500, env, request);
         }
       }
 
       // ── Stripe: create checkout session ────────────────────────────────────
       if (path === '/stripe/checkout' && request.method === 'POST') {
-        if (!env.STRIPE_SECRET_KEY) return json({ error: 'Stripe not configured' }, 503, env);
+        if (!env.STRIPE_SECRET_KEY) return json({ error: 'Stripe not configured' }, 503, env, request);
         const body = await request.json().catch(() => null);
         if (!body?.planId || !body?.successUrl || !body?.cancelUrl) {
-          return json({ error: 'Missing planId, successUrl, or cancelUrl' }, 400, env);
+          return json({ error: 'Missing planId, successUrl, or cancelUrl' }, 400, env, request);
         }
         const priceMap = {
           monthly_starter: env.STRIPE_PRICE_MONTHLY_STARTER,
@@ -393,7 +402,7 @@ export default {
           annual_pro:      env.STRIPE_PRICE_ANNUAL_PRO,
         };
         const priceId = priceMap[body.planId];
-        if (!priceId) return json({ error: `Unknown planId: ${body.planId}` }, 400, env);
+        if (!priceId) return json({ error: `Unknown planId: ${body.planId}` }, 400, env, request);
 
         const params = new URLSearchParams({
           mode: 'subscription',
@@ -415,14 +424,14 @@ export default {
 
         if (!stripeResp.ok) {
           const err = await stripeResp.json().catch(() => ({}));
-          return json({ error: err.error?.message || 'Stripe checkout failed' }, 500, env);
+          return json({ error: err.error?.message || 'Stripe checkout failed' }, 500, env, request);
         }
 
         const session = await stripeResp.json();
-        return json({ url: session.url }, 200, env);
+        return json({ url: session.url }, 200, env, request);
       }
 
-      return json({ error: 'Not found' }, 404, env);
+      return json({ error: 'Not found' }, 404, env, request);
     } catch (err) {
       return json({ error: err.message }, err.message.includes('Firebase') ? 401 : 500, env);
     }
