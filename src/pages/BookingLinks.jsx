@@ -33,6 +33,7 @@ function slugify(text) {
 const DEFAULT_RULES = {
   bufferMinutes: 15,
   maxBookingsPerDay: 8,
+  slotDurationMinutes: 60,
   schedule: makeDefaultSchedule(),
 };
 
@@ -291,6 +292,21 @@ export default function BookingLinks() {
 
         <div className="space-y-3">
           <div className="flex items-center justify-between">
+            <label className="text-sm text-muted-foreground">Session duration</label>
+            <div className="flex gap-1.5">
+              {[15, 30, 45, 60].map(mins => (
+                <button key={mins} type="button"
+                  onClick={() => setGlobalRules(r => ({ ...r, slotDurationMinutes: mins }))}
+                  className={`px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all ${(globalRules.slotDurationMinutes || 60) === mins
+                    ? "bg-accent text-accent-foreground"
+                    : "bg-muted text-muted-foreground"}`}>
+                  {mins}m
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between">
             <label className="text-sm text-muted-foreground">Buffer between bookings</label>
             <div className="flex items-center gap-1">
               <Input type="number" value={globalRules.bufferMinutes} min="0" max="120"
@@ -424,25 +440,10 @@ export default function BookingLinks() {
               </div>
             </div>
 
-            <div>
-              <label className="text-xs text-muted-foreground mb-2 block">Meeting duration</label>
-              <div className="grid grid-cols-4 gap-2">
-                {[15, 30, 45, 60].map(mins => (
-                  <button key={mins} type="button"
-                    onClick={() => setNewLink(l => ({ ...l, slotDurationMinutes: mins }))}
-                    className={`py-2 rounded-xl text-sm font-medium transition-all ${newLink.slotDurationMinutes === mins
-                      ? "bg-accent text-accent-foreground"
-                      : "bg-muted text-muted-foreground hover:text-foreground"}`}>
-                    {mins}min
-                  </button>
-                ))}
-              </div>
-            </div>
-
             <div className="flex gap-2">
               <Button variant="ghost" size="sm" onClick={() => setShowNew(false)} className="flex-1 rounded-xl">Cancel</Button>
               <Button size="sm" disabled={!newLink.title.trim() || !newLink.slug.trim() || createMutation.isPending}
-                onClick={() => createMutation.mutate(newLink)}
+                onClick={() => createMutation.mutate({ ...newLink, slotDurationMinutes: globalRules.slotDurationMinutes || 60 })}
                 className="flex-1 rounded-xl bg-accent text-accent-foreground hover:bg-accent/90">
                 {createMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "Create Link"}
               </Button>
@@ -503,28 +504,13 @@ export default function BookingLinks() {
                 <AnimatePresence>
                   {expandedId === link.id && (
                     <motion.div initial={{ height: 0 }} animate={{ height: "auto" }} exit={{ height: 0 }} className="overflow-hidden">
-                      <div className="px-4 pb-4 border-t border-border/40 pt-3 space-y-3">
-                        <p className="text-xs font-heading font-semibold text-muted-foreground uppercase tracking-wider">Meeting Duration</p>
-                        <div className="grid grid-cols-4 gap-2">
-                          {[15, 30, 45, 60].map(mins => (
-                            <button key={mins} type="button"
-                              onClick={() => updateMutation.mutate({ id: link.id, data: { slotDurationMinutes: mins }, slug: link.slug })}
-                              className={`py-2 rounded-xl text-sm font-medium transition-all ${(link.slotDurationMinutes || 30) === mins
-                                ? "bg-accent text-accent-foreground"
-                                : "bg-muted text-muted-foreground hover:text-foreground"}`}>
-                              {mins}min
-                            </button>
-                          ))}
-                        </div>
-
-                        <div className="pt-2 border-t border-border/40">
-                          <p className="text-xs font-heading font-semibold text-muted-foreground uppercase tracking-wider mb-2">Booking URL</p>
-                          <div className="flex items-center gap-2 bg-muted/50 rounded-xl px-3 py-2">
-                            <span className="text-xs font-mono flex-1 truncate">{url}</span>
-                            <button onClick={() => copyLink(link)} className="text-accent shrink-0">
-                              <Copy className="w-3 h-3" />
-                            </button>
-                          </div>
+                      <div className="px-4 pb-4 border-t border-border/40 pt-3">
+                        <p className="text-xs font-heading font-semibold text-muted-foreground uppercase tracking-wider mb-2">Booking URL</p>
+                        <div className="flex items-center gap-2 bg-muted/50 rounded-xl px-3 py-2">
+                          <span className="text-xs font-mono flex-1 truncate">{url}</span>
+                          <button onClick={() => copyLink(link)} className="text-accent shrink-0">
+                            <Copy className="w-3 h-3" />
+                          </button>
                         </div>
                       </div>
                     </motion.div>
