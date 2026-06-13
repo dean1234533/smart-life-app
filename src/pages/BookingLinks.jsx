@@ -214,22 +214,53 @@ export default function BookingLinks() {
 
       toast.success("Booking rules saved");
 
-      // Warn about any saved slots that clash with the already-loaded calendar data
-      if (busyTimes.length > 0 && globalRules.schedule) {
-        const conflicts = [];
-        Object.entries(globalRules.schedule).forEach(([dow, cfg]) => {
-          if (!cfg.enabled || !cfg.slots?.length) return;
-          cfg.slots.forEach(slotTime => {
-            if (checkSlotConflict(Number(dow), slotTime)) {
-              conflicts.push(`${DAY_LABELS[Number(dow)]} ${slotTime}`);
+      // Always fetch fresh busy times and check for conflicts
+      if (WORKER_URL && globalRules.schedule) {
+        try {
+          const now = new Date();
+          const twoWeeks = new Date(now.getTime() + 14 * 24 * 3600000);
+          const res = await fetch(
+            `${WORKER_URL}/calendar/freebusy/${encodeURIComponent(uid)}?timeMin=${now.toISOString()}&timeMax=${twoWeeks.toISOString()}`
+          );
+          const freshBusy = res.ok ? (await res.json()).busyTimes || [] : [];
+          if (freshBusy.length > 0) {
+            const conflicts = [];
+            const now2 = new Date();
+            for (let d = 0; d < 14; d++) {
+              const date = new Date(now2);
+              date.setDate(date.getDate() + d);
+              date.setHours(0, 0, 0, 0);
+              const dow = date.getDay();
+              const cfg = globalRules.schedule[dow];
+              if (!cfg?.enabled || !cfg.slots?.length) continue;
+              for (const slotTime of cfg.slots) {
+                const [h, m] = slotTime.split(":").map(Number);
+                const slotStart = new Date(date);
+                slotStart.setHours(h, m, 0, 0);
+                if (slotStart <= now2) continue;
+                const clash = [15, 30, 45, 60].some(dur => {
+                  const slotEnd = new Date(slotStart.getTime() + dur * 60000);
+                  return freshBusy.some(ev => {
+                    const evStart = new Date(ev.start);
+                    const evEnd = new Date(ev.end || new Date(evStart.getTime() + 3600000));
+                    return slotStart < evEnd && slotEnd > evStart;
+                  });
+                });
+                if (clash) {
+                  const label = `${DAY_LABELS[dow]} ${slotTime}`;
+                  if (!conflicts.includes(label)) conflicts.push(label);
+                }
+              }
             }
-          });
-        });
-        if (conflicts.length > 0) {
-          setTimeout(() => toast.warning(
-            `${conflicts.join(', ')} overlap${conflicts.length === 1 ? 's' : ''} with your calendar — won't show to clients`,
-            { duration: 12000 }
-          ), 300);
+            if (conflicts.length > 0) {
+              toast.warning(
+                `${conflicts.join(', ')} overlap${conflicts.length === 1 ? 's' : ''} with your calendar — won't show to clients`,
+                { duration: 12000 }
+              );
+            }
+          }
+        } catch (e) {
+          console.error('Conflict check error:', e);
         }
       }
     } catch {
