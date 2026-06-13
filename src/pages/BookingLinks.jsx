@@ -188,7 +188,7 @@ export default function BookingLinks() {
           if (busyRes.ok) {
             const data = await busyRes.json();
             const busyTimes = data.busyTimes || [];
-            const slotDurationMinutes = globalRules.slotDurationMinutes || 60;
+            const durations = [15, 30, 45, 60];
             const conflicts = [];
             for (let d = 0; d < 14; d++) {
               const date = new Date(now);
@@ -202,11 +202,13 @@ export default function BookingLinks() {
                 const slotStart = new Date(date);
                 slotStart.setHours(h, m, 0, 0);
                 if (slotStart <= now) continue;
-                const slotEnd = new Date(slotStart.getTime() + slotDurationMinutes * 60000);
-                const isBusy = busyTimes.some(ev => {
-                  const evStart = new Date(ev.start);
-                  const evEnd = new Date(ev.end || new Date(evStart.getTime() + 3600000));
-                  return slotStart < evEnd && slotEnd > evStart;
+                const isBusy = durations.some(dur => {
+                  const slotEnd = new Date(slotStart.getTime() + dur * 60000);
+                  return busyTimes.some(ev => {
+                    const evStart = new Date(ev.start);
+                    const evEnd = new Date(ev.end || new Date(evStart.getTime() + 3600000));
+                    return slotStart < evEnd && slotEnd > evStart;
+                  });
                 });
                 if (isBusy) {
                   const label = `${DAY_LABELS[dow]} ${slotTime}`;
