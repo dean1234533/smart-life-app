@@ -1,8 +1,8 @@
-import React, { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import {
   Calendar, CheckCircle2, Zap, Brain, BarChart3, Users,
-  ArrowRight, Sparkles, Shield, Clock, Menu, X
+  ArrowRight, Shield, Clock, Menu, X, Dumbbell
 } from 'lucide-react';
 
 const WORKER_URL = import.meta.env.VITE_WORKER_URL || 'https://smart-life-calendar.deanburt1308.workers.dev';
@@ -10,34 +10,34 @@ const APP_ORIGIN = typeof window !== 'undefined' ? window.location.origin : 'htt
 
 const FEATURES = [
   {
-    icon: Brain,
-    title: 'AI-Powered Intelligence',
-    description: 'Smart agent learns your patterns, summarises your day, and surfaces what matters — notes, follow-ups, and priorities automatically surfaced.',
+    icon: Calendar,
+    title: 'Smart Booking Links',
+    description: 'Share a link with clients that shows only your genuinely free slots, synced live with Google Calendar. No double bookings, no back-and-forth.',
   },
   {
-    icon: Calendar,
-    title: 'Booking & Availability',
-    description: 'Share booking links with clients that show only your genuinely free slots, synced live with your Google Calendar. No double bookings, ever.',
+    icon: Brain,
+    title: 'AI Smart Agent',
+    description: 'Your own AI assistant that summarises your day, surfaces follow-ups, and helps you stay on top of notes, tasks, and client interactions.',
   },
   {
     icon: CheckCircle2,
     title: 'Tasks & Notes',
-    description: 'Capture everything in one place. Tasks with reminders, rich notes with voice recording, and a timeline that connects it all.',
+    description: 'Capture everything in one place. Tasks with reminders, rich notes with voice recording, and a timeline that keeps it all connected.',
   },
   {
-    icon: BarChart3,
-    title: 'Fitness & Expenses',
-    description: 'Track workouts, log expenses, manage shopping lists and recipes. Everything about your life, in one beautifully organised hub.',
+    icon: Dumbbell,
+    title: 'Fitness Tracking',
+    description: 'Log workouts, track progress, and build programmes. Built by a PT, for PTs and anyone serious about their fitness.',
   },
   {
     icon: Users,
     title: 'Client Management',
-    description: 'Follow-ups, contacts, and meeting summaries — know exactly where each relationship stands without digging through email threads.',
+    description: 'Follow-ups, contacts, and meeting summaries in one place. Always know where each client relationship stands.',
   },
   {
     icon: Shield,
     title: 'Private & Secure',
-    description: 'Your data lives in your own Firebase account. No third-party sharing, no ads — just a clean tool that works for you.',
+    description: 'Your data stays in your own account. No third-party sharing, no ads — just a clean tool that works entirely for you.',
   },
 ];
 
@@ -48,15 +48,15 @@ const PLANS = {
       name: 'Starter',
       price: '£9',
       period: 'per month',
-      description: 'Perfect for individuals getting organised',
+      description: 'For individuals getting organised',
       features: [
         'Notes, tasks & timeline',
         '1 booking link',
         'Google Calendar sync',
         'Fitness & expense tracking',
-        'PWA — works offline',
+        'Works offline (PWA)',
       ],
-      cta: 'Start for £9/mo',
+      cta: 'Get Starter — £9/mo',
       popular: false,
     },
     {
@@ -64,7 +64,7 @@ const PLANS = {
       name: 'Pro',
       price: '£19',
       period: 'per month',
-      description: 'For professionals who want every feature',
+      description: 'For professionals & personal trainers',
       features: [
         'Everything in Starter',
         'Unlimited booking links',
@@ -74,7 +74,7 @@ const PLANS = {
         'Push notifications',
         'Priority support',
       ],
-      cta: 'Start for £19/mo',
+      cta: 'Get Pro — £19/mo',
       popular: true,
     },
   ],
@@ -84,15 +84,15 @@ const PLANS = {
       name: 'Starter',
       price: '£89',
       period: 'per year',
-      description: 'Perfect for individuals getting organised',
+      description: 'For individuals getting organised',
       features: [
         'Notes, tasks & timeline',
         '1 booking link',
         'Google Calendar sync',
         'Fitness & expense tracking',
-        'PWA — works offline',
+        'Works offline (PWA)',
       ],
-      cta: 'Start for £89/yr',
+      cta: 'Get Starter — £89/yr',
       popular: false,
       saving: 'Save £19',
     },
@@ -101,7 +101,7 @@ const PLANS = {
       name: 'Pro',
       price: '£179',
       period: 'per year',
-      description: 'For professionals who want every feature',
+      description: 'For professionals & personal trainers',
       features: [
         'Everything in Starter',
         'Unlimited booking links',
@@ -111,241 +111,28 @@ const PLANS = {
         'Push notifications',
         'Priority support',
       ],
-      cta: 'Start for £179/yr',
+      cta: 'Get Pro — £179/yr',
       popular: true,
       saving: 'Save £49',
     },
   ],
 };
 
-function NavBar({ mobileOpen, setMobileOpen }) {
-  return (
-    <nav className="fixed top-0 left-0 right-0 z-50 border-b border-white/10 backdrop-blur-xl bg-[#0d1520]/80">
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-lg bg-[#33e6ff] flex items-center justify-center">
-            <Sparkles className="w-4 h-4 text-[#0d1520]" />
-          </div>
-          <span className="font-bold text-lg text-white" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
-            MindFlow
-          </span>
-        </div>
+const serif = "'IBM Plex Serif', 'Libre Baskerville', Georgia, serif";
 
-        {/* Desktop nav */}
-        <div className="hidden md:flex items-center gap-8">
-          <a href="#features" className="text-sm text-white/60 hover:text-white transition-colors">Features</a>
-          <a href="#pricing" className="text-sm text-white/60 hover:text-white transition-colors">Pricing</a>
-          <Link
-            to="/login"
-            className="text-sm font-medium text-white/80 hover:text-white transition-colors"
-          >
-            Sign in
-          </Link>
-          <a
-            href="#pricing"
-            className="text-sm font-semibold px-4 py-2 rounded-lg bg-[#33e6ff] text-[#0d1520] hover:bg-[#5befff] transition-colors"
-          >
-            Get started
-          </a>
-        </div>
-
-        {/* Mobile menu toggle */}
-        <button
-          className="md:hidden text-white/60 hover:text-white"
-          onClick={() => setMobileOpen(o => !o)}
-        >
-          {mobileOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
-        </button>
-      </div>
-
-      {/* Mobile menu */}
-      {mobileOpen && (
-        <div className="md:hidden border-t border-white/10 bg-[#0d1520] px-4 py-4 flex flex-col gap-4">
-          <a href="#features" className="text-sm text-white/60" onClick={() => setMobileOpen(false)}>Features</a>
-          <a href="#pricing" className="text-sm text-white/60" onClick={() => setMobileOpen(false)}>Pricing</a>
-          <Link to="/login" className="text-sm text-white/80">Sign in</Link>
-          <a
-            href="#pricing"
-            className="text-sm font-semibold px-4 py-2 rounded-lg bg-[#33e6ff] text-[#0d1520] text-center"
-            onClick={() => setMobileOpen(false)}
-          >
-            Get started
-          </a>
-        </div>
-      )}
-    </nav>
-  );
-}
-
-function HeroSection() {
-  return (
-    <section className="relative pt-32 pb-24 px-4 overflow-hidden">
-      {/* Background glow */}
-      <div className="absolute inset-0 pointer-events-none">
-        <div className="absolute top-1/4 left-1/2 -translate-x-1/2 w-[800px] h-[400px] bg-[#33e6ff]/8 rounded-full blur-3xl" />
-      </div>
-
-      <div className="relative max-w-4xl mx-auto text-center">
-        <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-[#33e6ff]/30 bg-[#33e6ff]/10 text-[#33e6ff] text-xs font-medium mb-6">
-          <Sparkles className="w-3 h-3" />
-          AI-powered life management
-        </div>
-
-        <h1
-          className="text-4xl sm:text-5xl md:text-6xl font-bold text-white leading-tight mb-6"
-          style={{ fontFamily: "'Space Grotesk', sans-serif" }}
-        >
-          Your life,{' '}
-          <span className="text-[#33e6ff]">intelligently</span>
-          <br />organised.
-        </h1>
-
-        <p className="text-lg text-white/60 max-w-2xl mx-auto mb-10 leading-relaxed">
-          Notes, tasks, calendar bookings, AI assistant, fitness, expenses — one beautifully
-          designed app that works offline and keeps everything in sync.
-        </p>
-
-        <div className="flex flex-col sm:flex-row gap-4 justify-center">
-          <a
-            href="#pricing"
-            className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl bg-[#33e6ff] text-[#0d1520] font-semibold text-base hover:bg-[#5befff] transition-colors"
-          >
-            Get started
-            <ArrowRight className="w-4 h-4" />
-          </a>
-          <Link
-            to="/login"
-            className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl border border-white/20 text-white text-base font-medium hover:bg-white/5 transition-colors"
-          >
-            Sign in to your account
-          </Link>
-        </div>
-
-        <div className="mt-10 flex items-center justify-center gap-6 text-sm text-white/40">
-          <span className="flex items-center gap-1.5">
-            <CheckCircle2 className="w-4 h-4 text-[#33e6ff]/60" /> No credit card to try
-          </span>
-          <span className="flex items-center gap-1.5">
-            <CheckCircle2 className="w-4 h-4 text-[#33e6ff]/60" /> Cancel anytime
-          </span>
-          <span className="flex items-center gap-1.5">
-            <CheckCircle2 className="w-4 h-4 text-[#33e6ff]/60" /> Works offline
-          </span>
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function FeaturesSection() {
-  return (
-    <section id="features" className="py-24 px-4">
-      <div className="max-w-6xl mx-auto">
-        <div className="text-center mb-16">
-          <h2
-            className="text-3xl sm:text-4xl font-bold text-white mb-4"
-            style={{ fontFamily: "'Space Grotesk', sans-serif" }}
-          >
-            Everything you need, nothing you don't
-          </h2>
-          <p className="text-white/50 text-lg max-w-xl mx-auto">
-            Built for people who take their time seriously.
-          </p>
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-          {FEATURES.map(({ icon: Icon, title, description }) => (
-            <div
-              key={title}
-              className="group p-6 rounded-2xl border border-white/8 bg-white/3 hover:bg-white/6 hover:border-[#33e6ff]/20 transition-all duration-300"
-            >
-              <div className="w-10 h-10 rounded-xl bg-[#33e6ff]/15 flex items-center justify-center mb-4 group-hover:bg-[#33e6ff]/25 transition-colors">
-                <Icon className="w-5 h-5 text-[#33e6ff]" />
-              </div>
-              <h3 className="font-semibold text-white mb-2" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
-                {title}
-              </h3>
-              <p className="text-sm text-white/50 leading-relaxed">{description}</p>
-            </div>
-          ))}
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function PricingCard({ plan, onSelect, loading }) {
-  return (
-    <div
-      className={`relative flex flex-col rounded-2xl border p-8 transition-all duration-300 ${
-        plan.popular
-          ? 'border-[#33e6ff]/40 bg-[#33e6ff]/6 ring-1 ring-[#33e6ff]/20'
-          : 'border-white/10 bg-white/3 hover:border-white/20'
-      }`}
-    >
-      {plan.popular && (
-        <div className="absolute -top-3 left-1/2 -translate-x-1/2">
-          <span className="px-3 py-1 rounded-full text-xs font-semibold bg-[#33e6ff] text-[#0d1520]">
-            Most popular
-          </span>
-        </div>
-      )}
-
-      {plan.saving && (
-        <div className="absolute top-4 right-4">
-          <span className="px-2 py-0.5 rounded-md text-xs font-medium bg-green-500/20 text-green-400 border border-green-500/20">
-            {plan.saving}
-          </span>
-        </div>
-      )}
-
-      <div className="mb-6">
-        <p className="text-sm font-medium text-white/50 mb-1">{plan.name}</p>
-        <div className="flex items-end gap-2 mb-2">
-          <span className="text-4xl font-bold text-white" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
-            {plan.price}
-          </span>
-          <span className="text-white/40 text-sm mb-1">{plan.period}</span>
-        </div>
-        <p className="text-sm text-white/40">{plan.description}</p>
-      </div>
-
-      <ul className="flex-1 space-y-3 mb-8">
-        {plan.features.map(f => (
-          <li key={f} className="flex items-start gap-2.5 text-sm text-white/70">
-            <CheckCircle2 className="w-4 h-4 text-[#33e6ff] flex-shrink-0 mt-0.5" />
-            {f}
-          </li>
-        ))}
-      </ul>
-
-      <button
-        onClick={() => onSelect(plan.id)}
-        disabled={loading === plan.id}
-        className={`w-full py-3 rounded-xl font-semibold text-sm transition-all ${
-          plan.popular
-            ? 'bg-[#33e6ff] text-[#0d1520] hover:bg-[#5befff] disabled:opacity-70'
-            : 'border border-white/20 text-white hover:bg-white/8 disabled:opacity-70'
-        }`}
-      >
-        {loading === plan.id ? (
-          <span className="flex items-center justify-center gap-2">
-            <span className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
-            Redirecting…
-          </span>
-        ) : (
-          plan.cta
-        )}
-      </button>
-    </div>
-  );
-}
-
-function PricingSection() {
+export default function LandingPage() {
   const [billing, setBilling] = useState('monthly');
   const [loading, setLoading] = useState(null);
   const [error, setError] = useState('');
-  const navigate = useNavigate();
+  const [mobileOpen, setMobileOpen] = useState(false);
+
+  useEffect(() => {
+    const link = document.createElement('link');
+    link.rel = 'stylesheet';
+    link.href = 'https://fonts.googleapis.com/css2?family=IBM+Plex+Serif:ital,wght@0,400;0,500;0,700;1,400&display=swap';
+    document.head.appendChild(link);
+    return () => document.head.removeChild(link);
+  }, []);
 
   const handleSelect = async (planId) => {
     setError('');
@@ -371,134 +158,271 @@ function PricingSection() {
   };
 
   return (
-    <section id="pricing" className="py-24 px-4">
-      <div className="max-w-4xl mx-auto">
-        <div className="text-center mb-12">
-          <h2
-            className="text-3xl sm:text-4xl font-bold text-white mb-4"
-            style={{ fontFamily: "'Space Grotesk', sans-serif" }}
-          >
-            Simple, transparent pricing
-          </h2>
-          <p className="text-white/50 text-lg mb-8">Start free, upgrade when you're ready.</p>
+    <div style={{ backgroundColor: '#000', color: '#fff', fontFamily: serif, minHeight: '100vh', overflowX: 'hidden' }}>
 
-          {/* Billing toggle */}
-          <div className="inline-flex items-center rounded-xl border border-white/10 bg-white/5 p-1">
-            <button
-              onClick={() => setBilling('monthly')}
-              className={`px-5 py-2 rounded-lg text-sm font-medium transition-all ${
-                billing === 'monthly'
-                  ? 'bg-white/12 text-white'
-                  : 'text-white/40 hover:text-white/60'
-              }`}
-            >
-              Monthly
-            </button>
-            <button
-              onClick={() => setBilling('annual')}
-              className={`px-5 py-2 rounded-lg text-sm font-medium transition-all ${
-                billing === 'annual'
-                  ? 'bg-white/12 text-white'
-                  : 'text-white/40 hover:text-white/60'
-              }`}
-            >
-              Annual
-              <span className="ml-1.5 text-xs text-green-400">Save up to 20%</span>
-            </button>
+      {/* ── NAV ──────────────────────────────────────────────────── */}
+      <nav style={{
+        position: 'fixed', top: 0, left: 0, right: 0, zIndex: 50,
+        background: 'rgba(0,0,0,0.92)', backdropFilter: 'blur(12px)',
+        borderBottom: '1px solid rgba(255,255,255,0.08)',
+      }}>
+        <div style={{ maxWidth: 1100, margin: '0 auto', padding: '0 20px', height: 64, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <a href="https://dbworkouts.co.uk" style={{ display: 'flex', alignItems: 'center', gap: 10, textDecoration: 'none' }}>
+            <span style={{ fontFamily: serif, fontWeight: 700, fontSize: 18, color: '#fff', letterSpacing: '0.01em' }}>DB's Workouts</span>
+          </a>
+
+          {/* Desktop */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 32 }} className="landing-desktop-nav">
+            <a href="#features" style={navLinkStyle}>Features</a>
+            <a href="#pricing" style={navLinkStyle}>Pricing</a>
+            <Link to="/login" style={navLinkStyle}>Sign in</Link>
+            <a href="#pricing" style={btnRedStyle}>Get Started</a>
           </div>
+
+          {/* Mobile toggle */}
+          <button
+            onClick={() => setMobileOpen(o => !o)}
+            style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.7)', cursor: 'pointer', padding: 4 }}
+            className="landing-mobile-toggle"
+          >
+            {mobileOpen ? <X size={22} /> : <Menu size={22} />}
+          </button>
         </div>
 
-        {error && (
-          <div className="mb-6 p-4 rounded-xl border border-red-500/30 bg-red-500/10 text-red-400 text-sm text-center">
-            {error}
+        {mobileOpen && (
+          <div style={{ background: '#0a0a0a', borderTop: '1px solid rgba(255,255,255,0.08)', padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <a href="#features" style={navLinkStyle} onClick={() => setMobileOpen(false)}>Features</a>
+            <a href="#pricing" style={navLinkStyle} onClick={() => setMobileOpen(false)}>Pricing</a>
+            <Link to="/login" style={navLinkStyle} onClick={() => setMobileOpen(false)}>Sign in</Link>
+            <a href="#pricing" style={{ ...btnRedStyle, textAlign: 'center' }} onClick={() => setMobileOpen(false)}>Get Started</a>
           </div>
         )}
+      </nav>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {PLANS[billing].map(plan => (
-            <PricingCard key={plan.id} plan={plan} onSelect={handleSelect} loading={loading} />
-          ))}
-        </div>
-
-        <p className="text-center text-sm text-white/30 mt-8">
-          Secure payment via Stripe · Cancel anytime · No hidden fees
-        </p>
-      </div>
-    </section>
-  );
-}
-
-function CtaSection() {
-  return (
-    <section className="py-24 px-4">
-      <div className="max-w-3xl mx-auto text-center">
-        <div className="relative rounded-3xl border border-[#33e6ff]/20 bg-[#33e6ff]/5 p-12 overflow-hidden">
-          <div className="absolute inset-0 pointer-events-none">
-            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[300px] bg-[#33e6ff]/8 rounded-full blur-3xl" />
+      {/* ── HERO ─────────────────────────────────────────────────── */}
+      <section style={{ paddingTop: 140, paddingBottom: 100, paddingLeft: 20, paddingRight: 20, textAlign: 'center', position: 'relative' }}>
+        <div style={{ position: 'absolute', inset: 0, background: 'radial-gradient(ellipse 700px 350px at 50% 40%, rgba(179,0,24,0.12), transparent)', pointerEvents: 'none' }} />
+        <div style={{ maxWidth: 760, margin: '0 auto', position: 'relative' }}>
+          <p style={{ fontFamily: serif, fontSize: 11, letterSpacing: '0.22em', color: '#b30018', textTransform: 'uppercase', marginBottom: 16 }}>
+            Built for personal trainers & busy professionals
+          </p>
+          <h1 style={{ fontFamily: serif, fontSize: 'clamp(40px,6vw,60px)', fontWeight: 700, lineHeight: 1.1, marginBottom: 24 }}>
+            Run your business.<br />
+            <span style={{ color: '#b30018' }}>Own your time.</span>
+          </h1>
+          <p style={{ fontSize: 'clamp(16px,2vw,20px)', color: 'rgba(255,255,255,0.6)', lineHeight: 1.65, maxWidth: 580, margin: '0 auto 40px', fontWeight: 400 }}>
+            Bookings, clients, tasks, AI assistant, fitness and more — one app that runs your PT business and personal life without the chaos.
+          </p>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 14, justifyContent: 'center' }}>
+            <a href="#pricing" style={btnRedStyle}>
+              Start today <ArrowRight size={16} style={{ display: 'inline', verticalAlign: 'middle', marginLeft: 6 }} />
+            </a>
+            <Link to="/login" style={btnOutlineStyle}>Sign in to your account</Link>
           </div>
-          <div className="relative">
-            <Clock className="w-10 h-10 text-[#33e6ff] mx-auto mb-4" />
-            <h2
-              className="text-3xl font-bold text-white mb-4"
-              style={{ fontFamily: "'Space Grotesk', sans-serif" }}
-            >
-              Take back control of your time
-            </h2>
-            <p className="text-white/50 mb-8 max-w-lg mx-auto">
-              Join people using MindFlow to stay on top of their work, their health, and their relationships.
-            </p>
-            <div className="flex flex-col sm:flex-row gap-4 justify-center">
-              <a
-                href="#pricing"
-                className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl bg-[#33e6ff] text-[#0d1520] font-semibold hover:bg-[#5befff] transition-colors"
-              >
-                Get started today
-                <ArrowRight className="w-4 h-4" />
-              </a>
-              <Link
-                to="/login"
-                className="inline-flex items-center justify-center px-6 py-3 rounded-xl border border-white/20 text-white font-medium hover:bg-white/5 transition-colors"
-              >
-                Sign in
-              </Link>
-            </div>
+          <div style={{ marginTop: 40, display: 'flex', flexWrap: 'wrap', gap: 24, justifyContent: 'center' }}>
+            {['Cancel anytime', 'Works offline', 'Google Calendar sync'].map(t => (
+              <span key={t} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: 'rgba(255,255,255,0.4)' }}>
+                <CheckCircle2 size={14} style={{ color: '#b30018' }} /> {t}
+              </span>
+            ))}
           </div>
         </div>
-      </div>
-    </section>
-  );
-}
+      </section>
 
-export default function LandingPage() {
-  const [mobileOpen, setMobileOpen] = useState(false);
+      {/* ── FEATURES ─────────────────────────────────────────────── */}
+      <section id="features" style={{ padding: '80px 20px' }}>
+        <div style={{ maxWidth: 1100, margin: '0 auto' }}>
+          <div style={{ textAlign: 'center', marginBottom: 56 }}>
+            <p style={{ fontFamily: serif, fontSize: 11, letterSpacing: '0.22em', color: '#b30018', textTransform: 'uppercase', marginBottom: 12 }}>What's included</p>
+            <h2 style={{ fontFamily: serif, fontSize: 'clamp(28px,4vw,40px)', fontWeight: 700 }}>Everything you need to stay ahead</h2>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 20 }}>
+            {FEATURES.map(({ icon: Icon, title, description }) => (
+              <div key={title} style={{
+                background: '#1a1a1a', border: '1px solid rgba(255,255,255,0.08)',
+                borderRadius: 8, padding: '28px 24px',
+                transition: 'border-color 0.2s',
+              }}>
+                <div style={{ width: 40, height: 40, borderRadius: 6, background: 'rgba(179,0,24,0.18)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 16 }}>
+                  <Icon size={20} color="#b30018" />
+                </div>
+                <h3 style={{ fontFamily: serif, fontSize: 18, fontWeight: 700, marginBottom: 8 }}>{title}</h3>
+                <p style={{ fontSize: 14, color: 'rgba(255,255,255,0.5)', lineHeight: 1.65, margin: 0 }}>{description}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
 
-  return (
-    <div
-      className="min-h-screen text-white"
-      style={{ backgroundColor: '#0d1520', fontFamily: "'Inter', sans-serif" }}
-    >
-      <NavBar mobileOpen={mobileOpen} setMobileOpen={setMobileOpen} />
-      <HeroSection />
-      <FeaturesSection />
-      <PricingSection />
-      <CtaSection />
+      {/* ── PRICING ──────────────────────────────────────────────── */}
+      <section id="pricing" style={{ padding: '80px 20px', background: '#0a0a0a' }}>
+        <div style={{ maxWidth: 860, margin: '0 auto' }}>
+          <div style={{ textAlign: 'center', marginBottom: 48 }}>
+            <p style={{ fontFamily: serif, fontSize: 11, letterSpacing: '0.22em', color: '#b30018', textTransform: 'uppercase', marginBottom: 12 }}>Pricing</p>
+            <h2 style={{ fontFamily: serif, fontSize: 'clamp(28px,4vw,40px)', fontWeight: 700, marginBottom: 8 }}>Simple, transparent pricing</h2>
+            <p style={{ fontSize: 16, color: 'rgba(255,255,255,0.45)', marginBottom: 32 }}>No hidden fees. Cancel anytime.</p>
 
-      <footer className="border-t border-white/8 py-8 px-4">
-        <div className="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4 text-sm text-white/30">
-          <div className="flex items-center gap-2">
-            <div className="w-6 h-6 rounded-md bg-[#33e6ff] flex items-center justify-center">
-              <Sparkles className="w-3 h-3 text-[#0d1520]" />
+            {/* Toggle */}
+            <div style={{ display: 'inline-flex', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 6, padding: 4 }}>
+              {['monthly', 'annual'].map(b => (
+                <button key={b} onClick={() => setBilling(b)} style={{
+                  background: billing === b ? 'rgba(255,255,255,0.1)' : 'none',
+                  border: 'none', color: billing === b ? '#fff' : 'rgba(255,255,255,0.4)',
+                  padding: '8px 20px', borderRadius: 4, cursor: 'pointer',
+                  fontFamily: serif, fontSize: 14, fontWeight: 600, textTransform: 'capitalize',
+                }}>
+                  {b === 'annual' ? 'Annual  (save 20%)' : 'Monthly'}
+                </button>
+              ))}
             </div>
-            <span style={{ fontFamily: "'Space Grotesk', sans-serif" }}>MindFlow</span>
           </div>
-          <div className="flex items-center gap-6">
-            <Link to="/privacy" className="hover:text-white/60 transition-colors">Privacy</Link>
-            <Link to="/terms" className="hover:text-white/60 transition-colors">Terms</Link>
-            <Link to="/login" className="hover:text-white/60 transition-colors">Sign in</Link>
+
+          {error && (
+            <div style={{ marginBottom: 24, padding: '14px 20px', borderRadius: 6, border: '1px solid rgba(179,0,24,0.4)', background: 'rgba(179,0,24,0.1)', color: '#ff6b6b', textAlign: 'center', fontSize: 14 }}>
+              {error}
+            </div>
+          )}
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 20 }}>
+            {PLANS[billing].map(plan => (
+              <div key={plan.id} style={{
+                position: 'relative', display: 'flex', flexDirection: 'column',
+                background: plan.popular ? '#1a0305' : '#1a1a1a',
+                border: `2px solid ${plan.popular ? '#b30018' : 'rgba(255,255,255,0.1)'}`,
+                borderRadius: 8, padding: '32px 28px',
+              }}>
+                {plan.popular && (
+                  <div style={{ position: 'absolute', top: -13, left: '50%', transform: 'translateX(-50%)', background: '#b30018', color: '#fff', fontSize: 11, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', padding: '5px 14px', borderRadius: 3 }}>
+                    Most popular
+                  </div>
+                )}
+                {plan.saving && (
+                  <div style={{ position: 'absolute', top: 16, right: 16, background: 'rgba(179,0,24,0.2)', color: '#b30018', border: '1px solid rgba(179,0,24,0.3)', fontSize: 11, fontWeight: 700, padding: '3px 8px', borderRadius: 3 }}>
+                    {plan.saving}
+                  </div>
+                )}
+                <p style={{ fontFamily: serif, fontSize: 11, letterSpacing: '0.18em', color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', marginBottom: 8 }}>{plan.name}</p>
+                <div style={{ display: 'flex', alignItems: 'flex-end', gap: 6, marginBottom: 4 }}>
+                  <span style={{ fontFamily: serif, fontSize: 48, fontWeight: 700, lineHeight: 1 }}>{plan.price}</span>
+                  <span style={{ fontSize: 14, color: 'rgba(255,255,255,0.35)', marginBottom: 6 }}>{plan.period}</span>
+                </div>
+                <p style={{ fontSize: 14, color: 'rgba(255,255,255,0.4)', marginBottom: 24 }}>{plan.description}</p>
+                <ul style={{ flex: 1, listStyle: 'none', padding: 0, margin: '0 0 28px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  {plan.features.map(f => (
+                    <li key={f} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, fontSize: 14, color: 'rgba(255,255,255,0.7)' }}>
+                      <CheckCircle2 size={15} style={{ color: '#b30018', flexShrink: 0, marginTop: 2 }} />
+                      {f}
+                    </li>
+                  ))}
+                </ul>
+                <button
+                  onClick={() => handleSelect(plan.id)}
+                  disabled={!!loading}
+                  style={{
+                    ...(plan.popular ? btnRedStyle : btnOutlineStyle),
+                    width: '100%', textAlign: 'center', cursor: loading ? 'not-allowed' : 'pointer',
+                    opacity: loading && loading !== plan.id ? 0.5 : 1,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                  }}
+                >
+                  {loading === plan.id ? (
+                    <>
+                      <span style={{ width: 14, height: 14, border: '2px solid currentColor', borderTopColor: 'transparent', borderRadius: '50%', display: 'inline-block', animation: 'spin 0.7s linear infinite' }} />
+                      Redirecting…
+                    </>
+                  ) : plan.cta}
+                </button>
+              </div>
+            ))}
           </div>
-          <span>© {new Date().getFullYear()} MindFlow</span>
+          <p style={{ textAlign: 'center', fontSize: 13, color: 'rgba(255,255,255,0.25)', marginTop: 24 }}>
+            Secure payment via Stripe · Cancel anytime
+          </p>
+        </div>
+      </section>
+
+      {/* ── CTA BANNER ───────────────────────────────────────────── */}
+      <section style={{ padding: '80px 20px', textAlign: 'center' }}>
+        <div style={{ maxWidth: 700, margin: '0 auto', borderTop: '3px solid #b30018', background: '#0d0d0d', padding: '60px 32px', borderRadius: 0 }}>
+          <Clock size={36} color="#b30018" style={{ marginBottom: 16 }} />
+          <h2 style={{ fontFamily: serif, fontSize: 'clamp(26px,4vw,36px)', fontWeight: 700, marginBottom: 16 }}>
+            Stop managing your life in your head
+          </h2>
+          <p style={{ fontSize: 16, color: 'rgba(255,255,255,0.5)', lineHeight: 1.65, marginBottom: 32, maxWidth: 500, margin: '0 auto 32px' }}>
+            One app for your bookings, clients, tasks, and fitness. Built for trainers who take their business seriously.
+          </p>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 14, justifyContent: 'center' }}>
+            <a href="#pricing" style={btnRedStyle}>
+              Get started today <ArrowRight size={15} style={{ display: 'inline', verticalAlign: 'middle', marginLeft: 6 }} />
+            </a>
+            <Link to="/login" style={btnOutlineStyle}>Sign in</Link>
+          </div>
+        </div>
+      </section>
+
+      {/* ── FOOTER ───────────────────────────────────────────────── */}
+      <footer style={{ background: '#0d0d0d', borderTop: '1px solid rgba(255,255,255,0.08)', padding: '40px 20px 24px', fontFamily: serif, fontSize: 14, color: 'rgba(255,255,255,0.4)' }}>
+        <div style={{ maxWidth: 1100, margin: '0 auto', display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', gap: 24, marginBottom: 32 }}>
+          <div>
+            <p style={{ fontWeight: 700, fontSize: 17, color: '#fff', marginBottom: 4 }}>DB's Workouts</p>
+            <p style={{ margin: 0 }}>Outdoor PT · East London</p>
+            <p style={{ margin: 0 }}>★★★★★ 5.0 · 69 Reviews</p>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <p style={{ fontSize: 11, letterSpacing: '0.18em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.3)', margin: 0 }}>Pages</p>
+            <a href="https://dbworkouts.co.uk" style={footerLinkStyle}>Home</a>
+            <a href="https://dbworkouts.co.uk/pricing" style={footerLinkStyle}>Services & Pricing</a>
+            <a href="https://dbworkouts.co.uk/contact" style={footerLinkStyle}>Contact</a>
+            <Link to="/login" style={footerLinkStyle}>App Login</Link>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <p style={{ fontSize: 11, letterSpacing: '0.18em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.3)', margin: 0 }}>Contact</p>
+            <a href="https://wa.me/447752300937" target="_blank" rel="noopener" style={footerLinkStyle}>WhatsApp</a>
+            <a href="mailto:dbs_workouts@yahoo.com" style={footerLinkStyle}>dbs_workouts@yahoo.com</a>
+            <a href="https://www.instagram.com/dbs_workouts" target="_blank" rel="noopener" style={footerLinkStyle}>Instagram</a>
+          </div>
+        </div>
+        <div style={{ borderTop: '1px solid rgba(255,255,255,0.07)', paddingTop: 20, textAlign: 'center', fontSize: 12 }}>
+          © 2026 DB's Workouts · Dean Burt ·{' '}
+          <Link to="/privacy" style={{ color: 'rgba(255,255,255,0.4)', textDecoration: 'underline' }}>Privacy</Link> ·{' '}
+          <Link to="/terms" style={{ color: 'rgba(255,255,255,0.4)', textDecoration: 'underline' }}>Terms</Link>
         </div>
       </footer>
+
+      <style>{`
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .landing-mobile-toggle { display: none !important; }
+        @media (max-width: 768px) {
+          .landing-desktop-nav { display: none !important; }
+          .landing-mobile-toggle { display: block !important; }
+        }
+      `}</style>
     </div>
   );
 }
+
+const btnRedStyle = {
+  display: 'inline-block', padding: '13px 26px',
+  background: '#b30018', color: '#fff',
+  border: '2px solid #b30018', borderRadius: 4,
+  fontSize: 13, fontWeight: 700, letterSpacing: '0.1em',
+  textTransform: 'uppercase', textDecoration: 'none', cursor: 'pointer',
+  transition: 'background 0.2s ease',
+};
+
+const btnOutlineStyle = {
+  display: 'inline-block', padding: '13px 26px',
+  background: 'none', color: '#fff',
+  border: '2px solid rgba(255,255,255,0.25)', borderRadius: 4,
+  fontSize: 13, fontWeight: 700, letterSpacing: '0.1em',
+  textTransform: 'uppercase', textDecoration: 'none', cursor: 'pointer',
+};
+
+const navLinkStyle = {
+  fontSize: 14, color: 'rgba(255,255,255,0.6)',
+  textDecoration: 'none', fontWeight: 500,
+};
+
+const footerLinkStyle = {
+  color: 'rgba(255,255,255,0.5)', textDecoration: 'none', fontSize: 13,
+};
