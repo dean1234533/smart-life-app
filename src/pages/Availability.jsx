@@ -130,7 +130,17 @@ export default function Availability() {
           getOrCreateUser(uid),
         ]);
         setGoogleConnected(connected);
-        if (profile?.workingHours) setWorkingHours(migrateWorkingHours(profile.workingHours));
+        // Prefer globalBookingRules.schedule (set via Booking Links) as it's the
+        // canonical schedule. Fall back to workingHours for legacy users.
+        const globalSchedule = profile?.globalBookingRules?.schedule;
+        if (globalSchedule) {
+          const dur = profile?.globalBookingRules?.slotDurationMinutes
+            ?? profile?.workingHours?.slotDurationMinutes
+            ?? 60;
+          setWorkingHours({ slotDurationMinutes: dur, perDaySchedule: globalSchedule });
+        } else if (profile?.workingHours) {
+          setWorkingHours(migrateWorkingHours(profile.workingHours));
+        }
         if (profile?.hiddenSlots) setHiddenSlots(profile.hiddenSlots);
         if (connected) {
           const now = new Date();
@@ -150,7 +160,14 @@ export default function Availability() {
     if (!uid) return;
     setSaving(true);
     try {
-      await updateUserDoc(uid, { workingHours, hiddenSlots });
+      // Keep both workingHours and globalBookingRules.schedule in sync so
+      // Booking Links and Availability always show the same schedule.
+      await updateUserDoc(uid, {
+        workingHours,
+        hiddenSlots,
+        'globalBookingRules.schedule': workingHours.perDaySchedule,
+        'globalBookingRules.slotDurationMinutes': workingHours.slotDurationMinutes,
+      });
       // Also push to Worker KV so the public booking page can read it without auth
       if (WORKER_URL) {
         const idToken = await firebaseAuth.currentUser?.getIdToken().catch(() => null);
