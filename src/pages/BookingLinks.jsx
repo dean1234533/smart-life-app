@@ -15,14 +15,16 @@ import { useCurrentUid } from "@/hooks/useCurrentUid";
 const WORKER_URL = import.meta.env.VITE_CALENDAR_WORKER_URL || '';
 
 const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-const ALL_TIMES = Array.from({ length: 36 }, (_, i) => {
-  const mins = 300 + i * 30;
+
+// Generate time options in 30-min steps for the dropdowns
+const TIME_OPTIONS = Array.from({ length: 48 }, (_, i) => {
+  const mins = i * 30;
   return `${String(Math.floor(mins / 60)).padStart(2, "0")}:${String(mins % 60).padStart(2, "0")}`;
 });
 
 function makeDefaultSchedule() {
   return Object.fromEntries(
-    [0,1,2,3,4,5,6].map(i => [i, { enabled: i >= 1 && i <= 5, slots: [] }])
+    [0,1,2,3,4,5,6].map(i => [i, { enabled: i >= 1 && i <= 5, start: "06:00", end: "20:00" }])
   );
 }
 
@@ -63,10 +65,11 @@ export default function BookingLinks() {
       if (profile?.globalBookingRules) {
         const r = { ...profile.globalBookingRules };
         if (!r.schedule) r.schedule = makeDefaultSchedule();
-        // Migrate old {enabled,start,end} format to {enabled,slots:[]}
+        // Migrate old slots[] format → start/end window format
         Object.keys(r.schedule).forEach(i => {
-          if (r.schedule[i].start !== undefined && !r.schedule[i].slots) {
-            r.schedule[i] = { enabled: r.schedule[i].enabled, slots: [] };
+          const d = r.schedule[i];
+          if (Array.isArray(d.slots) || (d.slots !== undefined && !d.start)) {
+            r.schedule[i] = { enabled: d.enabled ?? false, start: "06:00", end: "20:00" };
           }
         });
         setGlobalRules({ ...DEFAULT_RULES, ...r });
@@ -245,59 +248,61 @@ export default function BookingLinks() {
             </div>
           </div>
 
-          {/* Per-day slot picker */}
+          {/* Per-day availability window */}
           <div className="space-y-2">
-            <label className="text-sm text-muted-foreground">Available days & session times</label>
+            <div>
+              <label className="text-sm text-muted-foreground">Available days & hours</label>
+              <p className="text-[11px] text-muted-foreground mt-0.5">
+                Set your working window — your Google Calendar fills in the rest, only showing genuinely free slots.
+              </p>
+            </div>
             <div className="flex gap-1">
               {DAY_LABELS.map((d, i) => {
-                const cfg = globalRules.schedule?.[i] ?? { enabled: false, slots: [] };
-                const count = cfg.slots?.length ?? 0;
+                const cfg = globalRules.schedule?.[i] ?? { enabled: false, start: "06:00", end: "20:00" };
                 return (
                   <button key={d} onClick={() => setSelectedRuleDay(i)}
                     className={`flex-1 py-2 rounded-lg text-[11px] font-medium transition-all flex flex-col items-center gap-0.5
-                      ${cfg.enabled && count > 0 ? "bg-accent text-accent-foreground" : cfg.enabled ? "bg-accent/40 text-accent-foreground" : "bg-muted text-muted-foreground"}
+                      ${cfg.enabled ? "bg-accent text-accent-foreground" : "bg-muted text-muted-foreground"}
                       ${selectedRuleDay === i ? "ring-2 ring-accent ring-offset-2 ring-offset-background" : ""}`}>
                     <span>{d}</span>
-                    <span className="text-[9px] opacity-80">{count > 0 ? `${count}` : "off"}</span>
+                    <span className="text-[9px] opacity-80">{cfg.enabled ? "on" : "off"}</span>
                   </button>
                 );
               })}
             </div>
 
             {selectedRuleDay !== null && (() => {
-              const cfg = globalRules.schedule?.[selectedRuleDay] ?? { enabled: false, slots: [] };
-              const selected = new Set(cfg.slots ?? []);
-              const toggle = (t) => {
-                const next = new Set(selected);
-                next.has(t) ? next.delete(t) : next.add(t);
-                setGlobalRules(r => ({
-                  ...r,
-                  schedule: { ...r.schedule, [selectedRuleDay]: { enabled: next.size > 0, slots: [...next].sort() } }
-                }));
-              };
+              const cfg = globalRules.schedule?.[selectedRuleDay] ?? { enabled: false, start: "06:00", end: "20:00" };
+              const updateDay = (patch) => setGlobalRules(r => ({
+                ...r, schedule: { ...r.schedule, [selectedRuleDay]: { ...cfg, ...patch } }
+              }));
               return (
-                <div className="space-y-2">
+                <div className="p-3 rounded-xl bg-muted/40 space-y-3">
                   <div className="flex items-center justify-between">
                     <span className="text-sm font-medium">{DAY_LABELS[selectedRuleDay]}</span>
-                    {selected.size > 0 && (
-                      <button onClick={() => setGlobalRules(r => ({
-                        ...r, schedule: { ...r.schedule, [selectedRuleDay]: { enabled: false, slots: [] } }
-                      }))} className="text-xs text-muted-foreground hover:text-destructive">Clear</button>
-                    )}
+                    <button onClick={() => updateDay({ enabled: !cfg.enabled })}
+                      className={`text-xs px-2.5 py-1 rounded-lg font-medium transition-all ${cfg.enabled ? "bg-accent text-accent-foreground" : "bg-muted text-muted-foreground"}`}>
+                      {cfg.enabled ? "On" : "Off"}
+                    </button>
                   </div>
-                  <div className="grid grid-cols-4 gap-1">
-                    {ALL_TIMES.map(t => (
-                      <button key={t} onClick={() => toggle(t)}
-                        className={`py-1.5 rounded-lg text-[11px] font-medium transition-all ${selected.has(t)
-                          ? "bg-accent text-accent-foreground"
-                          : "bg-muted text-muted-foreground hover:bg-muted/70"}`}>
-                        {t}
-                      </button>
-                    ))}
-                  </div>
-                  <p className="text-[10px] text-muted-foreground text-center">
-                    {selected.size === 0 ? "Tap times to mark as available" : `${selected.size} slot${selected.size > 1 ? "s" : ""}`}
-                  </p>
+                  {cfg.enabled && (
+                    <div className="flex items-center gap-2">
+                      <div className="flex-1">
+                        <label className="text-[11px] text-muted-foreground mb-1 block">From</label>
+                        <select value={cfg.start ?? "06:00"} onChange={e => updateDay({ start: e.target.value })}
+                          className="w-full bg-card border border-border rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:border-accent/50">
+                          {TIME_OPTIONS.map(t => <option key={t} value={t}>{t}</option>)}
+                        </select>
+                      </div>
+                      <div className="flex-1">
+                        <label className="text-[11px] text-muted-foreground mb-1 block">To</label>
+                        <select value={cfg.end ?? "20:00"} onChange={e => updateDay({ end: e.target.value })}
+                          className="w-full bg-card border border-border rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:border-accent/50">
+                          {TIME_OPTIONS.filter(t => t > (cfg.start ?? "06:00")).map(t => <option key={t} value={t}>{t}</option>)}
+                        </select>
+                      </div>
+                    </div>
+                  )}
                 </div>
               );
             })()}

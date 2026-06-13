@@ -24,36 +24,31 @@ function computeFreeSlots(busyTimes, workingHours, hiddenSlots, existingBookings
   const dayOfWeek = getDay(date);
   const now = new Date();
 
-  // New format: explicit per-day slot times
+  // Determine the working window for this day
+  let winStart = null, winEnd = null;
   if (perDaySchedule) {
     const cfg = perDaySchedule[dayOfWeek];
-    if (!cfg?.enabled || !cfg.slots?.length) return [];
-    return cfg.slots.flatMap(slotTime => {
-      const [h, m] = slotTime.split(":").map(Number);
-      const slotStart = new Date(date);
-      slotStart.setHours(h, m, 0, 0);
-      if (slotStart <= now) return [];
-      const slotEnd = new Date(slotStart.getTime() + slotDurationMinutes * 60000);
-      const isBusy = busyTimes.some(ev => {
-        const evStart = new Date(ev.start);
-        const evEnd   = new Date(ev.end || new Date(evStart.getTime() + 3600000));
-        return slotStart < evEnd && slotEnd > evStart;
-      });
-      const isHidden  = hiddenSlots.includes(slotStart.toISOString());
-      const isBooked  = existingBookings.some(b => {
-        if (!b.confirmed) return false;
-        const bd = b.slot?.toDate ? b.slot.toDate() : new Date(b.slot);
-        return Math.abs(bd.getTime() - slotStart.getTime()) < slotDurationMinutes * 60000;
-      });
-      if (isBusy || isHidden || isBooked) return [];
-      return [{ start: slotStart.toISOString(), end: slotEnd.toISOString(), label: slotTime, duration: slotDurationMinutes }];
-    });
+    if (!cfg?.enabled) return [];
+    // New format: {enabled, start, end}
+    if (cfg.start && cfg.end) {
+      winStart = cfg.start;
+      winEnd   = cfg.end;
+    } else if (cfg.slots?.length) {
+      // Legacy slot-array format — treat min/max as the window
+      winStart = cfg.slots[0];
+      winEnd   = cfg.slots[cfg.slots.length - 1];
+    } else {
+      return [];
+    }
+  } else if (workDays?.includes(dayOfWeek)) {
+    winStart = startTime || "09:00";
+    winEnd   = endTime   || "18:00";
+  } else {
+    return [];
   }
 
-  // Legacy format: start/end range
-  if (!workDays?.includes(dayOfWeek)) return [];
-  const [sh, sm] = (startTime || "09:00").split(":").map(Number);
-  const [eh, em] = (endTime   || "18:00").split(":").map(Number);
+  const [sh, sm] = winStart.split(":").map(Number);
+  const [eh, em] = winEnd.split(":").map(Number);
   const slots = [];
   let current = sh * 60 + sm;
   const endMinutes = eh * 60 + em;
@@ -65,7 +60,7 @@ function computeFreeSlots(busyTimes, workingHours, hiddenSlots, existingBookings
     if (slotStart > now) {
       const isBusy = busyTimes.some(ev => {
         const evStart = new Date(ev.start);
-        const evEnd = new Date(ev.end || new Date(evStart.getTime() + 3600000));
+        const evEnd   = new Date(ev.end || new Date(evStart.getTime() + 3600000));
         return slotStart < evEnd && slotEnd > evStart;
       });
       const isHidden = hiddenSlots.includes(slotStart.toISOString());
@@ -153,15 +148,12 @@ export default function BookingPage() {
       if (WORKER_URL) {
         try {
           const settingsRes = await fetch(`${WORKER_URL}/availability/settings/${encodeURIComponent(foundUid)}`);
-          console.log('[BookingPage] KV fetch status:', settingsRes.status);
           if (settingsRes.ok) {
             const settings = await settingsRes.json();
-            console.log('[BookingPage] KV settings:', JSON.stringify(settings));
             if (settings?.workingHours) {
               const merged = { ...DEFAULT_WORKING_HOURS, ...settings.workingHours };
               // Per-link duration always wins over the global availability setting
               if (linkSlotDuration) merged.slotDurationMinutes = linkSlotDuration;
-              console.log('[BookingPage] merged workingHours:', JSON.stringify(merged));
               setWorkingHours(merged);
             } else if (linkSlotDuration) {
               setWorkingHours(wh => ({ ...wh, slotDurationMinutes: linkSlotDuration }));
@@ -171,7 +163,6 @@ export default function BookingPage() {
             setWorkingHours(wh => ({ ...wh, slotDurationMinutes: linkSlotDuration }));
           }
         } catch (e) {
-          console.error('[BookingPage] KV fetch error:', e);
           if (linkSlotDuration) setWorkingHours(wh => ({ ...wh, slotDurationMinutes: linkSlotDuration }));
         }
       } else if (linkSlotDuration) {
@@ -211,11 +202,8 @@ export default function BookingPage() {
   const weekStart = addDays(today, weekOffset * 7);
   const weekDays = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
 
-  const getSlotsForDate = (date) => {
-    const slots = computeFreeSlots(busyTimes, workingHours, hiddenSlots, existingBookings, date);
-    if (slots.length > 0) console.log('[BookingPage] slots for', format(date, 'EEE d'), ':', slots.map(s => s.label));
-    return slots;
-  };
+  const getSlotsForDate = (date) =>
+    computeFreeSlots(busyTimes, workingHours, hiddenSlots, existingBookings, date);
 
   const hasSlotsOnDay = (date) => !isBefore(date, today) && getSlotsForDate(date).length > 0;
 
