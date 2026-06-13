@@ -282,7 +282,14 @@ export default {
         const uid = await verifyFirebaseToken(extractIdToken(request), projectId);
         const body = await request.json().catch(() => null);
         if (!body) return json({ error: 'Invalid body' }, 400, env);
-        await env.GOOGLE_TOKENS.put(`avail:${uid}`, JSON.stringify(body));
+        // Merge with existing entry so schedule and hiddenSlots can be written
+        // independently without overwriting each other.
+        const existing = await env.GOOGLE_TOKENS.get(`avail:${uid}`, 'json').catch(() => null) || {};
+        const merged = {
+          workingHours: body.workingHours !== undefined ? body.workingHours : existing.workingHours,
+          hiddenSlots:  body.hiddenSlots  !== undefined ? body.hiddenSlots  : existing.hiddenSlots,
+        };
+        await env.GOOGLE_TOKENS.put(`avail:${uid}`, JSON.stringify(merged));
         return json({ ok: true }, 200, env);
       }
 

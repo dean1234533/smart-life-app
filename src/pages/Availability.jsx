@@ -1,8 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowLeft, Check, ChevronLeft, ChevronRight, Loader2, Link } from "lucide-react";
+import { ArrowLeft, Check, ChevronLeft, ChevronRight, Loader2, Link, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import { format, addDays, startOfDay, getDay } from "date-fns";
 import { useCurrentUid } from "@/hooks/useCurrentUid";
@@ -12,57 +11,9 @@ import { firebaseAuth } from "@/lib/firebase";
 
 const WORKER_URL = import.meta.env.VITE_CALENDAR_WORKER_URL || '';
 
-const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-const DURATIONS = [15, 30, 45, 60, 90];
-
-// All possible time slots shown in the picker: 05:00–22:30 in 30-min steps
-const ALL_TIMES = Array.from({ length: 36 }, (_, i) => {
-  const mins = 300 + i * 30; // start at 5:00
-  return `${String(Math.floor(mins / 60)).padStart(2, "0")}:${String(mins % 60).padStart(2, "0")}`;
-});
-
-function makeDefaultSchedule() {
-  return Object.fromEntries(
-    [0,1,2,3,4,5,6].map(i => [i, { enabled: i >= 1 && i <= 5, slots: [] }])
-  );
-}
-
-const DEFAULT_WORKING_HOURS = {
-  slotDurationMinutes: 60,
-  perDaySchedule: makeDefaultSchedule(),
-};
-
-function migrateWorkingHours(wh) {
-  if (!wh) return DEFAULT_WORKING_HOURS;
-  if (wh.perDaySchedule && Object.values(wh.perDaySchedule)[0]?.slots !== undefined) {
-    return { ...DEFAULT_WORKING_HOURS, ...wh };
-  }
-  // Migrate old start/end range or previous {enabled,start,end} format to slots[]
-  const oldEnabled = wh.workDays ?? [1,2,3,4,5];
-  const oldStart = wh.startTime ?? wh.perDaySchedule?.[1]?.start ?? "09:00";
-  const oldEnd   = wh.endTime   ?? wh.perDaySchedule?.[1]?.end   ?? "18:00";
-  const [sh, sm] = oldStart.split(":").map(Number);
-  const [eh, em] = oldEnd.split(":").map(Number);
-  const dur = wh.slotDurationMinutes ?? 60;
-  const defaultSlots = [];
-  let cur = sh * 60 + sm;
-  while (cur + dur <= eh * 60 + em) {
-    defaultSlots.push(`${String(Math.floor(cur / 60)).padStart(2,"0")}:${String(cur % 60).padStart(2,"0")}`);
-    cur += dur;
-  }
-  return {
-    slotDurationMinutes: dur,
-    perDaySchedule: Object.fromEntries(
-      [0,1,2,3,4,5,6].map(i => {
-        const wasEnabled = oldEnabled.includes ? oldEnabled.includes(i) : (wh.perDaySchedule?.[i]?.enabled ?? false);
-        return [i, { enabled: wasEnabled, slots: wasEnabled ? defaultSlots : [] }];
-      })
-    ),
-  };
-}
-
 function computeFreeSlots(events, workingHours, date) {
-  const { slotDurationMinutes, perDaySchedule, workDays, startTime, endTime } = workingHours;
+  if (!workingHours) return [];
+  const { slotDurationMinutes = 60, perDaySchedule, workDays, startTime, endTime } = workingHours;
   const dayOfWeek = getDay(date);
   const now = new Date();
 
@@ -85,14 +36,12 @@ function computeFreeSlots(events, workingHours, date) {
     });
   }
 
-  // Backward compat: old start/end range format
   if (!workDays?.includes(dayOfWeek)) return [];
   const [sh, sm] = (startTime || "09:00").split(":").map(Number);
   const [eh, em] = (endTime   || "18:00").split(":").map(Number);
   const slots = [];
   let current = sh * 60 + sm;
-  const step = slotDurationMinutes;
-  while (current + step <= eh * 60 + em) {
+  while (current + slotDurationMinutes <= eh * 60 + em) {
     const slotStart = new Date(date);
     slotStart.setHours(Math.floor(current / 60), current % 60, 0, 0);
     if (slotStart > now) {
@@ -100,7 +49,7 @@ function computeFreeSlots(events, workingHours, date) {
       const label = `${String(Math.floor(current / 60)).padStart(2,"0")}:${String(current % 60).padStart(2,"0")}`;
       slots.push({ start: slotStart.toISOString(), end: slotEnd.toISOString(), label });
     }
-    current += step;
+    current += slotDurationMinutes;
   }
   return slots;
 }
@@ -111,9 +60,8 @@ export default function Availability() {
   const [googleConnected, setGoogleConnected] = useState(false);
   const [loading, setLoading] = useState(true);
   const [events, setEvents] = useState([]);
-  const [workingHours, setWorkingHours] = useState(DEFAULT_WORKING_HOURS);
+  const [workingHours, setWorkingHours] = useState(null);
   const [hiddenSlots, setHiddenSlots] = useState([]);
-  const [selectedDay, setSelectedDay] = useState(1); // Mon selected by default
   const [saving, setSaving] = useState(false);
   const [weekOffset, setWeekOffset] = useState(0);
   const [copied, setCopied] = useState(false);
@@ -130,16 +78,13 @@ export default function Availability() {
           getOrCreateUser(uid),
         ]);
         setGoogleConnected(connected);
-        // Prefer globalBookingRules.schedule (set via Booking Links) as it's the
-        // canonical schedule. Fall back to workingHours for legacy users.
-        const globalSchedule = profile?.globalBookingRules?.schedule;
-        if (globalSchedule) {
-          const dur = profile?.globalBookingRules?.slotDurationMinutes
-            ?? profile?.workingHours?.slotDurationMinutes
-            ?? 60;
-          setWorkingHours({ slotDurationMinutes: dur, perDaySchedule: globalSchedule });
-        } else if (profile?.workingHours) {
-          setWorkingHours(migrateWorkingHours(profile.workingHours));
+        // Load workingHours from Worker KV — single source of truth for the booking page
+        if (WORKER_URL) {
+          const res = await fetch(`${WORKER_URL}/availability/settings/${encodeURIComponent(uid)}`).catch(() => null);
+          if (res?.ok) {
+            const data = await res.json();
+            if (data?.workingHours) setWorkingHours(data.workingHours);
+          }
         }
         if (profile?.hiddenSlots) setHiddenSlots(profile.hiddenSlots);
         if (connected) {
@@ -160,22 +105,16 @@ export default function Availability() {
     if (!uid) return;
     setSaving(true);
     try {
-      // Keep both workingHours and globalBookingRules.schedule in sync so
-      // Booking Links and Availability always show the same schedule.
-      await updateUserDoc(uid, {
-        workingHours,
-        hiddenSlots,
-        'globalBookingRules.schedule': workingHours.perDaySchedule,
-        'globalBookingRules.slotDurationMinutes': workingHours.slotDurationMinutes,
-      });
-      // Also push to Worker KV so the public booking page can read it without auth
+      await updateUserDoc(uid, { hiddenSlots });
+      // Only push hiddenSlots to Worker KV — schedule is managed by Booking Links
+      // The Worker merges, so the existing workingHours schedule is preserved.
       if (WORKER_URL) {
         const idToken = await firebaseAuth.currentUser?.getIdToken().catch(() => null);
         if (idToken) {
           await fetch(`${WORKER_URL}/availability/settings`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json', Authorization: `Firebase ${idToken}` },
-            body: JSON.stringify({ workingHours, hiddenSlots }),
+            body: JSON.stringify({ hiddenSlots }),
           }).catch(() => {});
         }
       }
@@ -245,95 +184,27 @@ export default function Availability() {
         </div>
       </div>
 
-      {/* Session availability */}
-      <div className="p-4 rounded-2xl bg-card border border-border/50 mb-5 space-y-4">
+      {/* Session schedule — managed in Booking Links */}
+      <button onClick={() => navigate("/booking-links")}
+        className="w-full p-4 rounded-2xl bg-card border border-border/50 mb-5 flex items-center justify-between text-left hover:border-accent/40 transition-colors">
         <div>
-          <h2 className="text-sm font-heading font-semibold">Session Availability</h2>
-          <p className="text-xs text-muted-foreground mt-0.5">Tap a day, then tap the times you're available for sessions.</p>
+          <p className="text-sm font-heading font-semibold">Session Schedule</p>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            {workingHours?.perDaySchedule
+              ? (() => {
+                  const activeDays = Object.values(workingHours.perDaySchedule).filter(d => d.enabled && d.slots?.length > 0);
+                  const totalSlots = activeDays.reduce((sum, d) => sum + d.slots.length, 0);
+                  return activeDays.length > 0
+                    ? `${activeDays.length} day${activeDays.length > 1 ? "s" : ""}, ${totalSlots} slots set`
+                    : "No sessions set yet";
+                })()
+              : "Tap to set your available session times"}
+          </p>
         </div>
+        <ExternalLink className="w-4 h-4 text-muted-foreground shrink-0" />
+      </button>
 
-        {/* Session length */}
-        <div>
-          <label className="text-xs text-muted-foreground mb-2 block">Session length</label>
-          <div className="flex gap-1.5 flex-wrap">
-            {DURATIONS.map(d => (
-              <button key={d} onClick={() => setWorkingHours(wh => ({ ...wh, slotDurationMinutes: d }))}
-                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${workingHours.slotDurationMinutes === d ? "bg-accent text-accent-foreground" : "bg-muted text-muted-foreground"}`}>
-                {d}m
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Day picker */}
-        <div className="flex gap-1">
-          {DAY_LABELS.map((d, i) => {
-            const cfg = workingHours.perDaySchedule?.[i] ?? { enabled: false, slots: [] };
-            const count = cfg.slots?.length ?? 0;
-            return (
-              <button key={d} onClick={() => setSelectedDay(i)}
-                className={`flex-1 py-2 rounded-lg text-[11px] font-medium transition-all flex flex-col items-center gap-0.5
-                  ${cfg.enabled && count > 0 ? "bg-accent text-accent-foreground" : cfg.enabled ? "bg-accent/40 text-accent-foreground" : "bg-muted text-muted-foreground"}
-                  ${selectedDay === i ? "ring-2 ring-accent ring-offset-2 ring-offset-background" : ""}`}>
-                <span>{d}</span>
-                <span className="text-[9px] opacity-80">{count > 0 ? `${count} slot${count > 1 ? "s" : ""}` : "off"}</span>
-              </button>
-            );
-          })}
-        </div>
-
-        {/* Per-day slot grid */}
-        {selectedDay !== null && (() => {
-          const cfg = workingHours.perDaySchedule?.[selectedDay] ?? { enabled: false, slots: [] };
-          const selectedSlots = new Set(cfg.slots ?? []);
-          const toggleSlotTime = (t) => {
-            const next = new Set(selectedSlots);
-            next.has(t) ? next.delete(t) : next.add(t);
-            setWorkingHours(wh => ({
-              ...wh,
-              perDaySchedule: {
-                ...wh.perDaySchedule,
-                [selectedDay]: { enabled: next.size > 0, slots: [...next].sort() }
-              }
-            }));
-          };
-          return (
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-medium">{DAY_LABELS[selectedDay]}</span>
-                {selectedSlots.size > 0 && (
-                  <button onClick={() => setWorkingHours(wh => ({
-                    ...wh,
-                    perDaySchedule: { ...wh.perDaySchedule, [selectedDay]: { enabled: false, slots: [] } }
-                  }))} className="text-xs text-muted-foreground hover:text-destructive transition-colors">
-                    Clear day
-                  </button>
-                )}
-              </div>
-              <div className="grid grid-cols-4 gap-1.5">
-                {ALL_TIMES.map(t => (
-                  <button key={t} onClick={() => toggleSlotTime(t)}
-                    className={`py-2 rounded-lg text-xs font-medium transition-all ${selectedSlots.has(t)
-                      ? "bg-accent text-accent-foreground"
-                      : "bg-muted text-muted-foreground hover:bg-muted/70"}`}>
-                    {t}
-                  </button>
-                ))}
-              </div>
-              <p className="text-[10px] text-muted-foreground text-center">
-                {selectedSlots.size === 0 ? "No slots — tap times above to add them" : `${selectedSlots.size} slot${selectedSlots.size > 1 ? "s" : ""} selected`}
-              </p>
-            </div>
-          );
-        })()}
-
-        <Button size="sm" onClick={save} disabled={saving}
-          className="w-full rounded-xl bg-accent text-accent-foreground hover:bg-accent/90">
-          {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <><Check className="w-3.5 h-3.5 mr-1.5" />Save</>}
-        </Button>
-      </div>
-
-      {/* Free slot toggles */}
+      {/* Free slot toggles — hide individual slots from your booking page */}
       {googleConnected && (
         <div>
           <div className="flex items-center justify-between mb-2">
@@ -384,7 +255,7 @@ export default function Availability() {
             })}
             {days.every(d => computeFreeSlots(events, workingHours, d).length === 0) && (
               <p className="text-center py-8 text-sm text-muted-foreground">
-                No free slots this week — all your working hours are booked or outside your set schedule.
+                No free slots this week.
               </p>
             )}
           </div>
