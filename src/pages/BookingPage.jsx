@@ -153,12 +153,15 @@ export default function BookingPage() {
       if (WORKER_URL) {
         try {
           const settingsRes = await fetch(`${WORKER_URL}/availability/settings/${encodeURIComponent(foundUid)}`);
+          console.log('[BookingPage] KV fetch status:', settingsRes.status);
           if (settingsRes.ok) {
             const settings = await settingsRes.json();
+            console.log('[BookingPage] KV settings:', JSON.stringify(settings));
             if (settings?.workingHours) {
               const merged = { ...DEFAULT_WORKING_HOURS, ...settings.workingHours };
               // Per-link duration always wins over the global availability setting
               if (linkSlotDuration) merged.slotDurationMinutes = linkSlotDuration;
+              console.log('[BookingPage] merged workingHours:', JSON.stringify(merged));
               setWorkingHours(merged);
             } else if (linkSlotDuration) {
               setWorkingHours(wh => ({ ...wh, slotDurationMinutes: linkSlotDuration }));
@@ -167,7 +170,8 @@ export default function BookingPage() {
           } else if (linkSlotDuration) {
             setWorkingHours(wh => ({ ...wh, slotDurationMinutes: linkSlotDuration }));
           }
-        } catch {
+        } catch (e) {
+          console.error('[BookingPage] KV fetch error:', e);
           if (linkSlotDuration) setWorkingHours(wh => ({ ...wh, slotDurationMinutes: linkSlotDuration }));
         }
       } else if (linkSlotDuration) {
@@ -207,8 +211,11 @@ export default function BookingPage() {
   const weekStart = addDays(today, weekOffset * 7);
   const weekDays = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
 
-  const getSlotsForDate = (date) =>
-    computeFreeSlots(busyTimes, workingHours, hiddenSlots, existingBookings, date);
+  const getSlotsForDate = (date) => {
+    const slots = computeFreeSlots(busyTimes, workingHours, hiddenSlots, existingBookings, date);
+    if (slots.length > 0) console.log('[BookingPage] slots for', format(date, 'EEE d'), ':', slots.map(s => s.label));
+    return slots;
+  };
 
   const hasSlotsOnDay = (date) => !isBefore(date, today) && getSlotsForDate(date).length > 0;
 
