@@ -41,6 +41,7 @@ import AdminPanel from '@/pages/AdminPanel';
 import Privacy from '@/pages/Privacy';
 import Terms from '@/pages/Terms';
 import VPN from '@/pages/VPN';
+import ProGate from '@/components/ProGate';
 
 const ADMIN_UID = import.meta.env.VITE_ADMIN_UID || '';
 
@@ -107,19 +108,19 @@ const AuthenticatedApp = () => {
           <Route path="/" element={<Home />} />
           <Route path="/notes" element={<Notes />} />
           <Route path="/notes/:id" element={<NoteEditor />} />
-          <Route path="/recordings" element={<Recordings />} />
-          <Route path="/recordings/new" element={<RecordingNew />} />
-          <Route path="/recordings/:id" element={<RecordingDetail />} />
+          <Route path="/recordings" element={<ProGate feature="Voice recordings"><Recordings /></ProGate>} />
+          <Route path="/recordings/new" element={<ProGate feature="Voice recordings"><RecordingNew /></ProGate>} />
+          <Route path="/recordings/:id" element={<ProGate feature="Voice recordings"><RecordingDetail /></ProGate>} />
           <Route path="/timeline" element={<Timeline />} />
           <Route path="/tasks" element={<Tasks />} />
-          <Route path="/agent" element={<SmartAgent />} />
+          <Route path="/agent" element={<ProGate feature="AI Smart Agent"><SmartAgent /></ProGate>} />
           <Route path="/availability" element={<Availability />} />
           <Route path="/shopping" element={<ShoppingLists />} />
           <Route path="/recipes" element={<Recipes />} />
-          <Route path="/meetings" element={<MeetingSummaries />} />
-          <Route path="/contacts" element={<Contacts />} />
+          <Route path="/meetings" element={<ProGate feature="Meeting summaries"><MeetingSummaries /></ProGate>} />
+          <Route path="/contacts" element={<ProGate feature="Contacts"><Contacts /></ProGate>} />
           <Route path="/expenses" element={<Expenses />} />
-          <Route path="/follow-ups" element={<FollowUps />} />
+          <Route path="/follow-ups" element={<ProGate feature="Follow-ups"><FollowUps /></ProGate>} />
           <Route path="/booking-links" element={<BookingLinks />} />
           <Route path="/fitness" element={<Fitness />} />
           <Route path="/convert" element={<Convert />} />

@@ -11,6 +11,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
 import { bookingLinksService, getOrCreateUser } from "@/lib/firestoreService";
 import { useCurrentUid } from "@/hooks/useCurrentUid";
+import { useAuth } from "@/lib/AuthContext";
 
 const WORKER_URL = import.meta.env.VITE_CALENDAR_WORKER_URL || '';
 
@@ -41,6 +42,7 @@ export default function BookingLinks() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const uid = useCurrentUid();
+  const { isPro } = useAuth();
   const [showNew, setShowNew] = useState(false);
   const [copiedId, setCopiedId] = useState(null);
   const [expandedId, setExpandedId] = useState(null);
@@ -257,10 +259,18 @@ export default function BookingLinks() {
           </button>
           <h1 className="text-2xl font-display font-bold">Booking Links</h1>
         </div>
-        <Button size="sm" onClick={() => setShowNew(true)}
-          className="rounded-xl bg-accent hover:bg-accent/90 text-accent-foreground gap-1.5">
-          <Plus className="w-4 h-4" />New Link
-        </Button>
+        {!isPro && links.length >= 1 ? (
+          <a href="https://dbworkouts.co.uk/smart-app#pricing" target="_blank" rel="noopener">
+            <Button size="sm" variant="outline" className="rounded-xl gap-1.5 text-xs">
+              Upgrade for more links
+            </Button>
+          </a>
+        ) : (
+          <Button size="sm" onClick={() => setShowNew(true)}
+            className="rounded-xl bg-accent hover:bg-accent/90 text-accent-foreground gap-1.5">
+            <Plus className="w-4 h-4" />New Link
+          </Button>
+        )}
       </div>
 
       {/* Global Booking Rules */}

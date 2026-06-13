@@ -6,15 +6,19 @@ import { firebaseAuth } from "@/lib/firebase";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { UserPlus, Mail, Lock, Loader2, AlertTriangle } from "lucide-react";
+import { UserPlus, Mail, Lock, Loader2, AlertTriangle, CheckCircle2 } from "lucide-react";
 import AuthLayout from "@/components/AuthLayout";
 import GoogleIcon from "@/components/GoogleIcon";
 import { invitesService } from "@/lib/firestoreService";
+
+const WORKER_URL = import.meta.env.VITE_CALENDAR_WORKER_URL || '';
 
 export default function Register() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const inviteId = searchParams.get("invite");
+  const isStripeSuccess = searchParams.get("checkout") === "success";
+  const stripePlan = searchParams.get("plan") || "";
 
   const [invite, setInvite] = useState(null);
   const [inviteLoading, setInviteLoading] = useState(true);
@@ -28,6 +32,11 @@ export default function Register() {
 
   useEffect(() => {
     const checkInvite = async () => {
+      // Coming from Stripe checkout — no invite needed
+      if (isStripeSuccess) {
+        setInviteLoading(false);
+        return;
+      }
       if (!inviteId) {
         setInviteError("Registration requires a valid invite link.");
         setInviteLoading(false);
@@ -64,8 +73,28 @@ export default function Register() {
     }
     setLoading(true);
     try {
-      await createUserWithEmailAndPassword(firebaseAuth, email, password);
+      const cred = await createUserWithEmailAndPassword(firebaseAuth, email, password);
       if (inviteId) await invitesService.markUsed(inviteId).catch(() => {});
+
+      // Link Stripe subscription to new account
+      if (isStripeSuccess && WORKER_URL) {
+        try {
+          const idToken = await cred.user.getIdToken();
+          const claimResp = await fetch(`${WORKER_URL}/stripe/claim`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Firebase ${idToken}` },
+            body: JSON.stringify({ email }),
+          });
+          const claimData = claimResp.ok ? await claimResp.json() : null;
+          const resolvedPlan = claimData?.plan || (stripePlan.includes('pro') ? 'pro' : 'starter');
+          const { updateUserDoc } = await import('@/lib/firestoreService');
+          await updateUserDoc(cred.user.uid, {
+            plan: resolvedPlan,
+            subscriptionStatus: claimData?.status || 'active',
+          });
+        } catch {}
+      }
+
       navigate("/");
     } catch (err) {
       setError(err.code === "auth/email-already-in-use"
@@ -78,8 +107,28 @@ export default function Register() {
 
   const handleGoogle = async () => {
     try {
-      await signInWithPopup(firebaseAuth, new GoogleAuthProvider());
+      const cred = await signInWithPopup(firebaseAuth, new GoogleAuthProvider());
       if (inviteId) await invitesService.markUsed(inviteId).catch(() => {});
+
+      if (isStripeSuccess && WORKER_URL) {
+        try {
+          const idToken = await cred.user.getIdToken();
+          const googleEmail = cred.user.email || '';
+          const claimResp = await fetch(`${WORKER_URL}/stripe/claim`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Firebase ${idToken}` },
+            body: JSON.stringify({ email: googleEmail }),
+          });
+          const claimData = claimResp.ok ? await claimResp.json() : null;
+          const resolvedPlan = claimData?.plan || (stripePlan.includes('pro') ? 'pro' : 'starter');
+          const { updateUserDoc } = await import('@/lib/firestoreService');
+          await updateUserDoc(cred.user.uid, {
+            plan: resolvedPlan,
+            subscriptionStatus: claimData?.status || 'active',
+          });
+        } catch {}
+      }
+
       navigate("/");
     } catch (err) {
       if (err.code !== "auth/popup-closed-by-user") {
@@ -113,8 +162,8 @@ export default function Register() {
   return (
     <AuthLayout
       icon={UserPlus}
-      title="Create your account"
-      subtitle="Sign up to get started"
+      title={isStripeSuccess ? "Payment successful — create your account" : "Create your account"}
+      subtitle={isStripeSuccess ? `Your ${stripePlan.includes('pro') ? 'Pro' : 'Starter'} plan is ready. Just set up your login below.` : "Sign up to get started"}
       footer={
         <>
           Already have an account?{" "}
@@ -134,6 +183,12 @@ export default function Register() {
         </div>
       </div>
 
+      {isStripeSuccess && (
+        <div className="mb-4 p-3 rounded-lg bg-success/10 text-success text-sm flex items-center gap-2">
+          <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
+          Payment confirmed. Create your account to access the app.
+        </div>
+      )}
       {error && <div className="mb-4 p-3 rounded-lg bg-destructive/10 text-destructive text-sm">{error}</div>}
 
       <form onSubmit={handleSubmit} className="space-y-4">

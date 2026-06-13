@@ -136,6 +136,18 @@ async function sendWebPush(subscription, payload, env) {
   } catch { return false; }
 }
 
+async function verifyStripeSignature(rawBody, sigHeader, secret) {
+  const parts = sigHeader.split(',');
+  const timestamp = (parts.find(p => p.startsWith('t=')) || '').slice(2);
+  const v1sigs = parts.filter(p => p.startsWith('v1=')).map(p => p.slice(3));
+  if (!timestamp || !v1sigs.length) return false;
+  const payload = `${timestamp}.${rawBody}`;
+  const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  const sig = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(payload));
+  const hex = Array.from(new Uint8Array(sig)).map(b => b.toString(16).padStart(2, '0')).join('');
+  return v1sigs.includes(hex);
+}
+
 // ───────────────────────────────────────────────────────────────────────────
 
 const ALLOWED_ORIGINS = [
@@ -386,6 +398,75 @@ export default {
         } catch (err) {
           return json({ error: err.message }, 500, env, request);
         }
+      }
+
+      // ── Stripe: webhook (must read raw body before any JSON parse) ─────────
+      if (path === '/stripe/webhook' && request.method === 'POST') {
+        const rawBody = await request.text();
+        const sigHeader = request.headers.get('Stripe-Signature') || '';
+
+        if (env.STRIPE_WEBHOOK_SECRET) {
+          const valid = await verifyStripeSignature(rawBody, sigHeader, env.STRIPE_WEBHOOK_SECRET);
+          if (!valid) return new Response('Invalid signature', { status: 400 });
+        }
+
+        let event;
+        try { event = JSON.parse(rawBody); } catch { return new Response('Bad JSON', { status: 400 }); }
+
+        const planFromId = (id) => (id || '').includes('pro') ? 'pro' : 'starter';
+
+        if (event.type === 'checkout.session.completed') {
+          const session = event.data.object;
+          const email = (session.customer_email || session.customer_details?.email || '').toLowerCase();
+          const customerId = session.customer;
+          const planId = session.metadata?.planId || session.subscription_data?.metadata?.planId || '';
+          if (email) {
+            const sub = { plan: planFromId(planId), planId, status: 'active', customerId, subscriptionId: session.subscription, updatedAt: Date.now() };
+            await env.GOOGLE_TOKENS.put(`stripe_sub:${email}`, JSON.stringify(sub));
+            if (customerId) await env.GOOGLE_TOKENS.put(`stripe_customer:${customerId}`, email);
+          }
+        }
+
+        if (event.type === 'invoice.payment_succeeded' || event.type === 'invoice.payment_failed' || event.type === 'customer.subscription.updated' || event.type === 'customer.subscription.deleted') {
+          const obj = event.data.object;
+          const customerId = obj.customer;
+          if (customerId) {
+            const email = await env.GOOGLE_TOKENS.get(`stripe_customer:${customerId}`);
+            if (email) {
+              const existing = await env.GOOGLE_TOKENS.get(`stripe_sub:${email}`, 'json') || {};
+              const status = event.type === 'invoice.payment_failed' ? 'past_due'
+                : event.type === 'customer.subscription.deleted' ? 'cancelled'
+                : obj.status || existing.status || 'active';
+              const planId = obj.metadata?.planId || existing.planId || '';
+              const periodEnd = obj.current_period_end ? obj.current_period_end * 1000 : existing.periodEnd;
+              await env.GOOGLE_TOKENS.put(`stripe_sub:${email}`, JSON.stringify({ ...existing, status, periodEnd, planId, plan: planFromId(planId), updatedAt: Date.now() }));
+            }
+          }
+        }
+
+        return new Response('ok', { status: 200 });
+      }
+
+      // ── Stripe: claim subscription after registration ────────────────────
+      if (path === '/stripe/claim' && request.method === 'POST') {
+        const uid = await verifyFirebaseToken(extractIdToken(request), projectId);
+        const { email } = await request.json().catch(() => ({}));
+        if (!email) return json({ plan: null }, 200, env, request);
+        const normalEmail = email.toLowerCase();
+        const sub = await env.GOOGLE_TOKENS.get(`stripe_sub:${normalEmail}`, 'json');
+        if (sub) {
+          await env.GOOGLE_TOKENS.put(`stripe_uid:${uid}`, normalEmail);
+        }
+        return json(sub ? { plan: sub.plan, status: sub.status, periodEnd: sub.periodEnd } : { plan: null }, 200, env, request);
+      }
+
+      // ── Stripe: get subscription status (authenticated) ──────────────────
+      if (path === '/stripe/subscription' && request.method === 'GET') {
+        const uid = await verifyFirebaseToken(extractIdToken(request), projectId);
+        const email = await env.GOOGLE_TOKENS.get(`stripe_uid:${uid}`);
+        if (!email) return json({ plan: null, status: null }, 200, env, request);
+        const sub = await env.GOOGLE_TOKENS.get(`stripe_sub:${email}`, 'json');
+        return json(sub || { plan: null, status: null }, 200, env, request);
       }
 
       // ── Stripe: create checkout session ────────────────────────────────────
