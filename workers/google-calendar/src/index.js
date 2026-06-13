@@ -379,6 +379,49 @@ export default {
         }
       }
 
+      // ── Stripe: create checkout session ────────────────────────────────────
+      if (path === '/stripe/checkout' && request.method === 'POST') {
+        if (!env.STRIPE_SECRET_KEY) return json({ error: 'Stripe not configured' }, 503, env);
+        const body = await request.json().catch(() => null);
+        if (!body?.planId || !body?.successUrl || !body?.cancelUrl) {
+          return json({ error: 'Missing planId, successUrl, or cancelUrl' }, 400, env);
+        }
+        const priceMap = {
+          monthly_starter: env.STRIPE_PRICE_MONTHLY_STARTER,
+          monthly_pro:     env.STRIPE_PRICE_MONTHLY_PRO,
+          annual_starter:  env.STRIPE_PRICE_ANNUAL_STARTER,
+          annual_pro:      env.STRIPE_PRICE_ANNUAL_PRO,
+        };
+        const priceId = priceMap[body.planId];
+        if (!priceId) return json({ error: `Unknown planId: ${body.planId}` }, 400, env);
+
+        const params = new URLSearchParams({
+          mode: 'subscription',
+          'line_items[0][price]': priceId,
+          'line_items[0][quantity]': '1',
+          success_url: body.successUrl,
+          cancel_url: body.cancelUrl,
+          'subscription_data[metadata][planId]': body.planId,
+        });
+
+        const stripeResp = await fetch('https://api.stripe.com/v1/checkout/sessions', {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${env.STRIPE_SECRET_KEY}`,
+            'Content-Type': 'application/x-www-form-urlencoded',
+          },
+          body: params,
+        });
+
+        if (!stripeResp.ok) {
+          const err = await stripeResp.json().catch(() => ({}));
+          return json({ error: err.error?.message || 'Stripe checkout failed' }, 500, env);
+        }
+
+        const session = await stripeResp.json();
+        return json({ url: session.url }, 200, env);
+      }
+
       return json({ error: 'Not found' }, 404, env);
     } catch (err) {
       return json({ error: err.message }, err.message.includes('Firebase') ? 401 : 500, env);
