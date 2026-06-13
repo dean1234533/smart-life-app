@@ -149,8 +149,6 @@ export default function BookingPage() {
             const settings = await settingsRes.json();
             if (settings?.workingHours) {
               const merged = { ...DEFAULT_WORKING_HOURS, ...settings.workingHours };
-              // Per-link duration always wins over the global availability setting
-              if (linkSlotDuration) merged.slotDurationMinutes = linkSlotDuration;
               setWorkingHours(merged);
             } else if (linkSlotDuration) {
               setWorkingHours(wh => ({ ...wh, slotDurationMinutes: linkSlotDuration }));
