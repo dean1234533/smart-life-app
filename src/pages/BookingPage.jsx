@@ -24,40 +24,15 @@ function computeFreeSlots(busyTimes, workingHours, hiddenSlots, existingBookings
   const dayOfWeek = getDay(date);
   const now = new Date();
 
-  // Determine the working window for this day
-  let winStart = null, winEnd = null;
   if (perDaySchedule) {
     const cfg = perDaySchedule[dayOfWeek];
-    if (!cfg?.enabled) return [];
-    // New format: {enabled, start, end}
-    if (cfg.start && cfg.end) {
-      winStart = cfg.start;
-      winEnd   = cfg.end;
-    } else if (cfg.slots?.length) {
-      // Legacy slot-array format — treat min/max as the window
-      winStart = cfg.slots[0];
-      winEnd   = cfg.slots[cfg.slots.length - 1];
-    } else {
-      return [];
-    }
-  } else if (workDays?.includes(dayOfWeek)) {
-    winStart = startTime || "09:00";
-    winEnd   = endTime   || "18:00";
-  } else {
-    return [];
-  }
-
-  const [sh, sm] = winStart.split(":").map(Number);
-  const [eh, em] = winEnd.split(":").map(Number);
-  const slots = [];
-  let current = sh * 60 + sm;
-  const endMinutes = eh * 60 + em;
-  const step = slotDurationMinutes + bufferMinutes;
-  while (current + slotDurationMinutes <= endMinutes) {
-    const slotStart = new Date(date);
-    slotStart.setHours(Math.floor(current / 60), current % 60, 0, 0);
-    const slotEnd = new Date(slotStart.getTime() + slotDurationMinutes * 60000);
-    if (slotStart > now) {
+    if (!cfg?.enabled || !cfg.slots?.length) return [];
+    return cfg.slots.flatMap(slotTime => {
+      const [h, m] = slotTime.split(":").map(Number);
+      const slotStart = new Date(date);
+      slotStart.setHours(h, m, 0, 0);
+      if (slotStart <= now) return [];
+      const slotEnd = new Date(slotStart.getTime() + slotDurationMinutes * 60000);
       const isBusy = busyTimes.some(ev => {
         const evStart = new Date(ev.start);
         const evEnd   = new Date(ev.end || new Date(evStart.getTime() + 3600000));
@@ -69,16 +44,38 @@ function computeFreeSlots(busyTimes, workingHours, hiddenSlots, existingBookings
         const bd = b.slot?.toDate ? b.slot.toDate() : new Date(b.slot);
         return Math.abs(bd.getTime() - slotStart.getTime()) < slotDurationMinutes * 60000;
       });
+      if (isBusy || isHidden || isBooked) return [];
+      return [{ start: slotStart.toISOString(), end: slotEnd.toISOString(), label: slotTime, duration: slotDurationMinutes }];
+    });
+  }
+
+  if (!workDays?.includes(dayOfWeek)) return [];
+  const [sh, sm] = (startTime || "09:00").split(":").map(Number);
+  const [eh, em] = (endTime || "18:00").split(":").map(Number);
+  const slots = [];
+  let current = sh * 60 + sm;
+  while (current + slotDurationMinutes <= eh * 60 + em) {
+    const slotStart = new Date(date);
+    slotStart.setHours(Math.floor(current / 60), current % 60, 0, 0);
+    if (slotStart > now) {
+      const slotEnd = new Date(slotStart.getTime() + slotDurationMinutes * 60000);
+      const label = `${String(Math.floor(current / 60)).padStart(2,"0")}:${String(current % 60).padStart(2,"0")}`;
+      const isBusy = busyTimes.some(ev => {
+        const evStart = new Date(ev.start);
+        const evEnd = new Date(ev.end || new Date(evStart.getTime() + 3600000));
+        return slotStart < evEnd && slotEnd > evStart;
+      });
+      const isHidden = hiddenSlots.includes(slotStart.toISOString());
+      const isBooked = existingBookings.some(b => {
+        if (!b.confirmed) return false;
+        const bd = b.slot?.toDate ? b.slot.toDate() : new Date(b.slot);
+        return Math.abs(bd.getTime() - slotStart.getTime()) < slotDurationMinutes * 60000;
+      });
       if (!isBusy && !isHidden && !isBooked) {
-        slots.push({
-          start: slotStart.toISOString(),
-          end: slotEnd.toISOString(),
-          label: `${String(Math.floor(current / 60)).padStart(2, "0")}:${String(current % 60).padStart(2, "0")}`,
-          duration: slotDurationMinutes,
-        });
+        slots.push({ start: slotStart.toISOString(), end: slotEnd.toISOString(), label, duration: slotDurationMinutes });
       }
     }
-    current += step;
+    current += slotDurationMinutes + bufferMinutes;
   }
   return slots;
 }
