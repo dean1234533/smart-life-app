@@ -188,7 +188,7 @@ export default function BookingLinks() {
           if (busyRes.ok) {
             const data = await busyRes.json();
             const busyTimes = data.busyTimes || [];
-            const slotDurationMinutes = 30; // use minimum to catch most conflicts
+            const slotDurationMinutes = globalRules.slotDurationMinutes || 60;
             const conflicts = [];
             for (let d = 0; d < 14; d++) {
               const date = new Date(now);
