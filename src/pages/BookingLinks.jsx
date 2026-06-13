@@ -213,7 +213,6 @@ export default function BookingLinks() {
       }
 
       toast.success("Booking rules saved");
-      toast.warning("Any slots that clash with your Google Calendar won't show to clients — double check your times.", { duration: 8000 });
     } catch {
       toast.error("Failed to save rules");
     } finally {
@@ -346,14 +345,36 @@ export default function BookingLinks() {
                     )}
                   </div>
                   <div className="grid grid-cols-4 gap-1">
-                    {ALL_TIMES.map(t => (
-                      <button key={t} onClick={() => toggle(t)}
-                        className={`py-1.5 rounded-lg text-[11px] font-medium transition-all ${selected.has(t)
-                          ? "bg-accent text-accent-foreground"
-                          : "bg-muted text-muted-foreground hover:bg-muted/70"}`}>
-                        {t}
-                      </button>
-                    ))}
+                    {(() => {
+                      const dur = (globalRules.slotDurationMinutes || 60) * 60000;
+                      const now = new Date();
+                      let nextDate = null;
+                      for (let d = 1; d <= 14; d++) {
+                        const dt = new Date(now);
+                        dt.setDate(dt.getDate() + d);
+                        dt.setHours(0, 0, 0, 0);
+                        if (dt.getDay() === selectedRuleDay) { nextDate = dt; break; }
+                      }
+                      return ALL_TIMES.filter(t => {
+                        if (!nextDate || !busyTimes.length) return true;
+                        const [h, m] = t.split(":").map(Number);
+                        const slotStart = new Date(nextDate);
+                        slotStart.setHours(h, m, 0, 0);
+                        const slotEnd = new Date(slotStart.getTime() + dur);
+                        return !busyTimes.some(ev => {
+                          const evStart = new Date(ev.start);
+                          const evEnd = new Date(ev.end || new Date(evStart.getTime() + 3600000));
+                          return slotStart < evEnd && slotEnd > evStart;
+                        });
+                      }).map(t => (
+                        <button key={t} onClick={() => toggle(t)}
+                          className={`py-1.5 rounded-lg text-[11px] font-medium transition-all ${selected.has(t)
+                            ? "bg-accent text-accent-foreground"
+                            : "bg-muted text-muted-foreground hover:bg-muted/70"}`}>
+                          {t}
+                        </button>
+                      ));
+                    })()}
                   </div>
                   <p className="text-[10px] text-muted-foreground text-center">
                     {selected.size === 0 ? "Tap times to mark as available" : `${selected.size} slot${selected.size > 1 ? "s" : ""}`}
