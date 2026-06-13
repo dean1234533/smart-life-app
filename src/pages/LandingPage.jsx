@@ -12,12 +12,12 @@ const FEATURES = [
   {
     icon: Calendar,
     title: 'Smart Booking Links',
-    description: 'Share a link with clients that shows only your genuinely free slots, synced live with Google Calendar. No double bookings, no back-and-forth.',
+    description: 'Share a link that shows only your genuinely free slots, synced live with Google Calendar. Anyone can book you without the back-and-forth messages.',
   },
   {
     icon: Brain,
     title: 'AI Smart Agent',
-    description: 'Your own AI assistant that summarises your day, surfaces follow-ups, and helps you stay on top of notes, tasks, and client interactions.',
+    description: 'Your own AI assistant that summarises your day, surfaces follow-ups, and keeps you on top of notes, tasks, and conversations automatically.',
   },
   {
     icon: CheckCircle2,
@@ -25,14 +25,14 @@ const FEATURES = [
     description: 'Capture everything in one place. Tasks with reminders, rich notes with voice recording, and a timeline that keeps it all connected.',
   },
   {
-    icon: Dumbbell,
-    title: 'Fitness Tracking',
-    description: 'Log workouts, track progress, and build programmes. Built by a PT, for PTs and anyone serious about their fitness.',
+    icon: Users,
+    title: 'Meetings & Contacts',
+    description: 'Meeting summaries, follow-ups, and contact management all in one place. Always know exactly where every conversation and relationship stands.',
   },
   {
-    icon: Users,
-    title: 'Client Management',
-    description: 'Follow-ups, contacts, and meeting summaries in one place. Always know where each client relationship stands.',
+    icon: BarChart3,
+    title: 'Expenses & Fitness',
+    description: 'Log expenses, track fitness, manage shopping lists. Everything about your work and personal life in one beautifully organised hub.',
   },
   {
     icon: Shield,
@@ -53,7 +53,7 @@ const PLANS = {
         'Notes, tasks & timeline',
         '1 booking link',
         'Google Calendar sync',
-        'Fitness & expense tracking',
+        'Expenses & fitness tracking',
         'Works offline (PWA)',
       ],
       cta: 'Get Starter — £9/mo',
@@ -64,7 +64,7 @@ const PLANS = {
       name: 'Pro',
       price: '£19',
       period: 'per month',
-      description: 'For professionals & personal trainers',
+      description: 'For businesses & busy professionals',
       features: [
         'Everything in Starter',
         'Unlimited booking links',
@@ -89,7 +89,7 @@ const PLANS = {
         'Notes, tasks & timeline',
         '1 booking link',
         'Google Calendar sync',
-        'Fitness & expense tracking',
+        'Expenses & fitness tracking',
         'Works offline (PWA)',
       ],
       cta: 'Get Starter — £89/yr',
@@ -101,7 +101,7 @@ const PLANS = {
       name: 'Pro',
       price: '£179',
       period: 'per year',
-      description: 'For professionals & personal trainers',
+      description: 'For businesses & busy professionals',
       features: [
         'Everything in Starter',
         'Unlimited booking links',
@@ -204,14 +204,14 @@ export default function LandingPage() {
         <div style={{ position: 'absolute', inset: 0, background: 'radial-gradient(ellipse 700px 350px at 50% 40%, rgba(179,0,24,0.12), transparent)', pointerEvents: 'none' }} />
         <div style={{ maxWidth: 760, margin: '0 auto', position: 'relative' }}>
           <p style={{ fontFamily: serif, fontSize: 11, letterSpacing: '0.22em', color: '#b30018', textTransform: 'uppercase', marginBottom: 16 }}>
-            Built for personal trainers & busy professionals
+            For businesses, freelancers & anyone with meetings
           </p>
           <h1 style={{ fontFamily: serif, fontSize: 'clamp(40px,6vw,60px)', fontWeight: 700, lineHeight: 1.1, marginBottom: 24 }}>
-            Run your business.<br />
-            <span style={{ color: '#b30018' }}>Own your time.</span>
+            Everything in one place.<br />
+            <span style={{ color: '#b30018' }}>Nothing slips through.</span>
           </h1>
           <p style={{ fontSize: 'clamp(16px,2vw,20px)', color: 'rgba(255,255,255,0.6)', lineHeight: 1.65, maxWidth: 580, margin: '0 auto 40px', fontWeight: 400 }}>
-            Bookings, clients, tasks, AI assistant, fitness and more — one app that runs your PT business and personal life without the chaos.
+            Bookings, meetings, tasks, notes, AI assistant, expenses and more — one app that keeps your work and personal life organised without the chaos.
           </p>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 14, justifyContent: 'center' }}>
             <a href="#pricing" style={btnRedStyle}>
@@ -234,7 +234,7 @@ export default function LandingPage() {
         <div style={{ maxWidth: 1100, margin: '0 auto' }}>
           <div style={{ textAlign: 'center', marginBottom: 56 }}>
             <p style={{ fontFamily: serif, fontSize: 11, letterSpacing: '0.22em', color: '#b30018', textTransform: 'uppercase', marginBottom: 12 }}>What's included</p>
-            <h2 style={{ fontFamily: serif, fontSize: 'clamp(28px,4vw,40px)', fontWeight: 700 }}>Everything you need to stay ahead</h2>
+            <h2 style={{ fontFamily: serif, fontSize: 'clamp(28px,4vw,40px)', fontWeight: 700 }}>Everything you need, nothing you don't</h2>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 20 }}>
             {FEATURES.map(({ icon: Icon, title, description }) => (
@@ -349,7 +349,7 @@ export default function LandingPage() {
             Stop managing your life in your head
           </h2>
           <p style={{ fontSize: 16, color: 'rgba(255,255,255,0.5)', lineHeight: 1.65, marginBottom: 32, maxWidth: 500, margin: '0 auto 32px' }}>
-            One app for your bookings, clients, tasks, and fitness. Built for trainers who take their business seriously.
+            Whether you run a business, freelance, or just have a lot on — one app keeps your bookings, meetings, tasks, and life in order.
           </p>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 14, justifyContent: 'center' }}>
             <a href="#pricing" style={btnRedStyle}>
