@@ -158,12 +158,21 @@ export default function RecordingNew() {
       setTranscription(transcriptText);
 
       // Full AI analysis
-      const prompt = `Analyze this voice recording transcription comprehensively:
+      const prompt = `Analyze this voice recording transcription comprehensively.
 
 Transcription: "${transcriptText}"
 
-Extract ALL of the following:
-1. A clean summary (2-3 sentences)
+CRITICAL — TOPIC SEGMENTATION:
+Read the transcription carefully and identify every distinct topic or subject that was discussed. Even if the conversation flowed naturally from one topic to another, split it into separate segments. Each segment should have:
+- A short, clear topic label (e.g. "Paper Costs", "Weekend Plans", "Project Deadline", "Budget Review")
+- A brief 1-2 sentence summary of what was said on that topic
+- The actual words from the transcription relevant to that topic
+- 2-4 bullet point key takeaways
+
+Examples of how to split: if someone talks about printer paper prices then shifts to going to the pub, that's two segments: "Office Supplies" and "Social Plans". Create as many segments as the conversation naturally contains — never lump everything into one.
+
+Also extract:
+1. An overall summary (2-3 sentences across everything)
 2. Meeting title suggestion
 3. Action items with assignees and deadlines
 4. Dates/appointments mentioned with confidence scores
@@ -171,16 +180,28 @@ Extract ALL of the following:
 6. Promises made (by whom, to whom)
 7. People mentioned
 8. Tags
-9. Calendar events to create (title, suggested date/time, attendees)
-10. Follow-up actions to track ("I'll send the contract tomorrow", etc.)
-11. Expense mentions ("the hotel cost £320", "we spent $50 on lunch")
-12. Contact info detected (new phone numbers, email addresses)`;
+9. Calendar events — ANY mention of a specific time, date, or scheduled activity goes here. Be generous: "meeting John at 3pm Tuesday", "dentist on Friday", "call at 2", "drinks tonight at 7" all become calendar events. Include a best-guess ISO date if the recording date context helps.
+10. Payment commitments — detect any mention of planned or promised payments: "going to pay Dave £10", "owe Sarah £50", "splitting the bill", "send £20 to Mum". For each one create BOTH an expense entry AND a calendar reminder if a time was mentioned.
+11. Expenses already incurred (past tense: "cost £30", "paid £50", "spent £15")
+12. Contact info detected`;
 
       const schema = {
         type: "object",
         properties: {
           ai_summary: { type: "string" },
           suggested_title: { type: "string" },
+          topic_segments: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                topic: { type: "string" },
+                summary: { type: "string" },
+                text: { type: "string" },
+                key_points: { type: "array", items: { type: "string" } }
+              }
+            }
+          },
           meeting_date: { type: "string" },
           attendees: { type: "array", items: { type: "string" } },
           decisions: { type: "array", items: { type: "string" } },
@@ -264,6 +285,19 @@ Extract ALL of the following:
                 email: { type: "string" }
               }
             }
+          },
+          payment_commitments: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                description: { type: "string" },
+                amount: { type: "number" },
+                currency: { type: "string" },
+                to_whom: { type: "string" },
+                due_date: { type: "string" }
+              }
+            }
           }
         }
       };
@@ -279,6 +313,7 @@ Extract ALL of the following:
         duration_seconds: duration,
         transcription: transcriptText,
         ai_summary: analysis.ai_summary,
+        topic_segments: analysis.topic_segments || [],
         extracted_actions: analysis.extracted_actions,
         detected_dates: analysis.detected_dates,
         detected_decisions: analysis.detected_decisions,
@@ -290,22 +325,53 @@ Extract ALL of the following:
       setSavedRecordingId(rec?.id);
       queryClient.invalidateQueries({ queryKey: ["recordings", uid] });
 
-      if (prefs.autoScan) {
-        // Auto-save everything without confirmation cards
-        if (analysis.calendar_events?.length) {
-          for (const ev of analysis.calendar_events)
-            await calendarEventsService.create(uid, { title: ev.title, date: ev.date, attendees: ev.attendees || [], linkedSummaryId: rec?.id || null }).catch(() => {});
-          toast.success(`${analysis.calendar_events.length} calendar event(s) saved`);
+      // ── Always auto-save: calendar events, expenses, payment commitments ──
+      let calSaved = 0, expSaved = 0, paymentSaved = 0;
+
+      if (analysis.calendar_events?.length) {
+        for (const ev of analysis.calendar_events)
+          await calendarEventsService.create(uid, { title: ev.title, date: ev.date, attendees: ev.attendees || [], linkedSummaryId: rec?.id || null }).catch(() => {});
+        calSaved += analysis.calendar_events.length;
+      }
+
+      if (analysis.expenses?.length) {
+        for (const exp of analysis.expenses)
+          await expensesService.create(uid, { description: exp.description, amount: exp.amount, currency: exp.currency || "GBP", linkedSummaryId: rec?.id || null }).catch(() => {});
+        expSaved += analysis.expenses.length;
+      }
+
+      // Payment commitments → expense + optional calendar reminder
+      if (analysis.payment_commitments?.length) {
+        for (const pay of analysis.payment_commitments) {
+          await expensesService.create(uid, {
+            description: pay.to_whom ? `Pay ${pay.to_whom} — ${pay.description}` : pay.description,
+            amount: pay.amount || 0,
+            currency: pay.currency || "GBP",
+            status: "pending",
+            linkedSummaryId: rec?.id || null,
+          }).catch(() => {});
+          if (pay.due_date) {
+            await calendarEventsService.create(uid, {
+              title: pay.to_whom ? `Pay ${pay.to_whom} £${pay.amount}` : pay.description,
+              date: pay.due_date,
+              linkedSummaryId: rec?.id || null,
+            }).catch(() => {});
+            calSaved++;
+          }
+          paymentSaved++;
         }
+        expSaved += paymentSaved;
+      }
+
+      if (calSaved) toast.success(`${calSaved} event${calSaved > 1 ? 's' : ''} added to calendar`);
+      if (expSaved) toast.success(`${expSaved} expense${expSaved > 1 ? 's' : ''} saved`);
+
+      // ── Rest depends on autoScan setting ──
+      if (prefs.autoScan) {
         if (analysis.follow_up_actions?.length) {
           for (const fu of analysis.follow_up_actions)
             await followUpsService.create(uid, { description: fu.description, expectedBy: fu.expected_by || null, resolved: false, linkedSummaryId: rec?.id || null }).catch(() => {});
           toast.success(`${analysis.follow_up_actions.length} follow-up(s) saved`);
-        }
-        if (analysis.expenses?.length) {
-          for (const exp of analysis.expenses)
-            await expensesService.create(uid, { description: exp.description, amount: exp.amount, currency: exp.currency || "GBP", linkedSummaryId: rec?.id || null }).catch(() => {});
-          toast.success(`${analysis.expenses.length} expense(s) saved`);
         }
         if (analysis.new_contacts?.length) {
           for (const c of analysis.new_contacts)
@@ -328,14 +394,9 @@ Extract ALL of the following:
           }).catch(() => {});
         }
       } else {
-        if (analysis.calendar_events?.length) setPendingCalendar(analysis.calendar_events);
         if (analysis.follow_up_actions?.length) setPendingFollowUps(analysis.follow_up_actions);
-        if (analysis.expenses?.length) setPendingExpenses(analysis.expenses);
         if (analysis.new_contacts?.length) setPendingContacts(analysis.new_contacts);
         if (analysis.extracted_actions?.length) setPendingTasks(analysis.extracted_actions);
-      }
-
-      if (!prefs.autoScan) {
         setPendingSummary({
           title: analysis.suggested_title || title || "Meeting",
           date: analysis.meeting_date || new Date().toISOString(),

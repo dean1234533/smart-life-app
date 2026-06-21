@@ -21,6 +21,23 @@
     <meta name="description" content="Your AI-powered life organizer" />
   </head>
   <body>
+    <!-- Force-clear stale service workers from old app versions.
+         Increment SW_VERSION whenever a cached old SW is causing problems. -->
+    <script>
+      (function () {
+        var SW_VERSION = '3';
+        var KEY = 'sw-cleared-v';
+        if ('serviceWorker' in navigator && localStorage.getItem(KEY) !== SW_VERSION) {
+          navigator.serviceWorker.getRegistrations().then(function (regs) {
+            if (regs.length === 0) { localStorage.setItem(KEY, SW_VERSION); return; }
+            Promise.all(regs.map(function (r) { return r.unregister(); })).then(function () {
+              localStorage.setItem(KEY, SW_VERSION);
+              location.reload();
+            });
+          });
+        }
+      })();
+    </script>
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
   </body>

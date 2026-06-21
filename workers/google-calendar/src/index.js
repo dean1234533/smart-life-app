@@ -148,6 +148,21 @@ async function verifyStripeSignature(rawBody, sigHeader, secret) {
   return v1sigs.includes(hex);
 }
 
+// ── Rate limiting (uses KV with TTL) ────────────────────────────────────────
+
+async function checkRateLimit(env, key, maxRequests, windowSeconds) {
+  const kvKey = `rl:${key}`;
+  const current = await env.GOOGLE_TOKENS.get(kvKey);
+  const count = current ? parseInt(current, 10) : 0;
+  if (count >= maxRequests) return false;
+  await env.GOOGLE_TOKENS.put(kvKey, String(count + 1), { expirationTtl: windowSeconds });
+  return true;
+}
+
+function clientIp(request) {
+  return request.headers.get('CF-Connecting-IP') || request.headers.get('X-Forwarded-For') || 'unknown';
+}
+
 // ───────────────────────────────────────────────────────────────────────────
 
 const ALLOWED_ORIGINS = [
@@ -362,8 +377,15 @@ export default {
 
       // Public: create a booking in the owner's Google Calendar
       if (path === '/booking/public' && request.method === 'POST') {
+        const ip = clientIp(request);
+        const allowed = await checkRateLimit(env, `booking:${ip}`, 10, 3600); // 10 bookings per hour per IP
+        if (!allowed) return json({ error: 'Too many requests. Please try again later.' }, 429, env, request);
         const body = await request.json().catch(() => null);
         if (!body?.ownerUid || !body?.start || !body?.end) return json({ error: 'Missing required fields' }, 400, env, request);
+        // Validate field lengths to prevent abuse
+        if (body.summary && body.summary.length > 200) return json({ error: 'Summary too long' }, 400, env, request);
+        if (body.description && body.description.length > 1000) return json({ error: 'Description too long' }, 400, env, request);
+        if (body.attendeeEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(body.attendeeEmail)) return json({ error: 'Invalid email' }, 400, env, request);
         try {
           const token = await getAccessToken(body.ownerUid, env);
           const eventBody = {
@@ -469,18 +491,60 @@ export default {
         return json(sub || { plan: null, status: null }, 200, env, request);
       }
 
+      // ── Stripe: customer portal (cancel / manage subscription) ────────────
+      if (path === '/stripe/portal' && request.method === 'POST') {
+        if (!env.STRIPE_SECRET_KEY) return json({ error: 'Stripe not configured' }, 503, env, request);
+        const uid = await verifyFirebaseToken(extractIdToken(request), projectId);
+        const email = await env.GOOGLE_TOKENS.get(`stripe_uid:${uid}`);
+        if (!email) return json({ error: 'No subscription found' }, 404, env, request);
+        const sub = await env.GOOGLE_TOKENS.get(`stripe_sub:${email}`, 'json');
+        if (!sub?.customerId) return json({ error: 'No Stripe customer found' }, 404, env, request);
+
+        const body = await request.json().catch(() => ({}));
+        const returnUrl = body.returnUrl || (env.APP_ORIGIN || 'https://smart-life-app.pages.dev') + '/settings';
+
+        const params = new URLSearchParams({
+          customer: sub.customerId,
+          return_url: returnUrl,
+        });
+
+        const portalResp = await fetch('https://api.stripe.com/v1/billing_portal/sessions', {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${env.STRIPE_SECRET_KEY}`,
+            'Content-Type': 'application/x-www-form-urlencoded',
+          },
+          body: params,
+        });
+
+        if (!portalResp.ok) {
+          const err = await portalResp.json().catch(() => ({}));
+          return json({ error: err.error?.message || 'Failed to open billing portal' }, 500, env, request);
+        }
+
+        const portal = await portalResp.json();
+        return json({ url: portal.url }, 200, env, request);
+      }
+
       // ── Stripe: create checkout session ────────────────────────────────────
       if (path === '/stripe/checkout' && request.method === 'POST') {
         if (!env.STRIPE_SECRET_KEY) return json({ error: 'Stripe not configured' }, 503, env, request);
+        const ip = clientIp(request);
+        const allowed = await checkRateLimit(env, `checkout:${ip}`, 5, 3600); // 5 per hour per IP
+        if (!allowed) return json({ error: 'Too many requests. Please try again later.' }, 429, env, request);
         const body = await request.json().catch(() => null);
         if (!body?.planId || !body?.successUrl || !body?.cancelUrl) {
           return json({ error: 'Missing planId, successUrl, or cancelUrl' }, 400, env, request);
         }
         const priceMap = {
-          monthly_starter: env.STRIPE_PRICE_MONTHLY_STARTER,
-          monthly_pro:     env.STRIPE_PRICE_MONTHLY_PRO,
-          annual_starter:  env.STRIPE_PRICE_ANNUAL_STARTER,
-          annual_pro:      env.STRIPE_PRICE_ANNUAL_PRO,
+          monthly_starter:  env.STRIPE_PRICE_MONTHLY_STARTER,
+          monthly_pro:      env.STRIPE_PRICE_MONTHLY_PRO,
+          annual_starter:   env.STRIPE_PRICE_ANNUAL_STARTER,
+          annual_pro:       env.STRIPE_PRICE_ANNUAL_PRO,
+          ai_personal:      env.STRIPE_PRICE_AI_PERSONAL,
+          ai_pt_pro:        env.STRIPE_PRICE_AI_PT_PRO,
+          ai_personal_annual: env.STRIPE_PRICE_AI_PERSONAL_ANNUAL,
+          ai_pt_pro_annual:   env.STRIPE_PRICE_AI_PT_PRO_ANNUAL,
         };
         const priceId = priceMap[body.planId];
         if (!priceId) return json({ error: `Unknown planId: ${body.planId}` }, 400, env, request);

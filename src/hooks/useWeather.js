@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useState, useEffect, useCallback } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 export function wmoToCondition(code) {
   if (code === 0)          return { label: 'Clear',        emoji: '☀️' };
@@ -37,43 +37,82 @@ async function fetchWeather(lat, lon) {
   return { weather, city };
 }
 
-export function useWeather() {
-  const [coords, setCoords] = useState(null);
-  const [geoError, setGeoError] = useState(null);
-  const [geoLoading, setGeoLoading] = useState(true);
+const WEATHER_OPT_IN_KEY = 'weather_location_enabled';
 
-  useEffect(() => {
-    if (!navigator.geolocation) {
-      setGeoError('Geolocation not supported');
-      setGeoLoading(false);
-      return;
-    }
+// 'idle' | 'requesting' | 'granted' | 'denied' | 'unsupported'
+export function useWeather() {
+  const queryClient = useQueryClient();
+  const [coords, setCoords] = useState(null);
+  const [permState, setPermState] = useState(() => {
+    if (!navigator.geolocation) return 'unsupported';
+    return 'idle';
+  });
+
+  const fetchCoords = useCallback((silent = false) => {
+    if (!navigator.geolocation) return;
+    if (!silent) setPermState('requesting');
     navigator.geolocation.getCurrentPosition(
       (pos) => {
+        localStorage.setItem(WEATHER_OPT_IN_KEY, '1');
         setCoords({ lat: pos.coords.latitude, lon: pos.coords.longitude });
-        setGeoLoading(false);
+        setPermState('granted');
+        queryClient.invalidateQueries({ queryKey: ['weather'] });
       },
       () => {
-        setGeoError('Location access denied');
-        setGeoLoading(false);
+        if (silent) {
+          // Silent attempt failed — browser revoked permission, clear opt-in and show button
+          localStorage.removeItem(WEATHER_OPT_IN_KEY);
+          setPermState('idle');
+        } else {
+          setPermState('denied');
+        }
       },
-      { timeout: 10000, maximumAge: 300000 }
+      { timeout: 8000, maximumAge: 300000 }
     );
-  }, []);
+  }, [queryClient]);
+
+  useEffect(() => {
+    if (!navigator.geolocation) return;
+    // If user previously opted in, fetch silently — no button needed
+    if (localStorage.getItem(WEATHER_OPT_IN_KEY)) {
+      fetchCoords(true);
+      return;
+    }
+    // Fall back to permissions API where supported
+    if (navigator.permissions) {
+      navigator.permissions.query({ name: 'geolocation' }).then((result) => {
+        if (result.state === 'granted') {
+          fetchCoords(true);
+        } else if (result.state === 'denied') {
+          setPermState('denied');
+        }
+        result.onchange = () => {
+          if (result.state === 'granted') fetchCoords(true);
+          if (result.state === 'denied') { localStorage.removeItem(WEATHER_OPT_IN_KEY); setPermState('denied'); }
+        };
+      }).catch(() => {});
+    }
+  }, [fetchCoords]);
+
+  const requestLocation = useCallback(() => {
+    fetchCoords(false);
+  }, [fetchCoords]);
 
   const { data, isLoading: weatherLoading, error: weatherError } = useQuery({
     queryKey: ['weather', coords?.lat?.toFixed(2), coords?.lon?.toFixed(2)],
     queryFn: () => fetchWeather(coords.lat, coords.lon),
     enabled: !!coords,
-    staleTime: 30 * 60 * 1000,  // re-fetch every 30 minutes
+    staleTime: 30 * 60 * 1000,
     gcTime: 60 * 60 * 1000,
     retry: 1,
   });
 
-  const loading = geoLoading || weatherLoading;
-  const error = geoError || (weatherError ? 'Weather unavailable' : null);
+  const loading = permState === 'requesting' || (permState === 'granted' && !data && weatherLoading);
+  const error = permState === 'denied' ? 'denied' : (weatherError ? 'unavailable' : null);
 
-  if (!data) return { loading, error, weather: null };
+  if (!data) {
+    return { loading, error, weather: null, permState, requestLocation };
+  }
 
   const { weather, city } = data;
   const cur = weather.current;
@@ -97,5 +136,7 @@ export function useWeather() {
         low: Math.round(weather.daily.temperature_2m_min[i]),
       })),
     },
+    permState,
+    requestLocation,
   };
 }

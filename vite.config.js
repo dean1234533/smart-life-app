@@ -75,21 +75,15 @@ export default defineConfig({
               cacheableResponse: { statuses: [0, 200] },
             },
           },
-          // ── Google Fonts ─────────────────────────────────────────────────────
-          {
-            urlPattern: /^https:\/\/fonts\.(googleapis|gstatic)\.com\//,
-            handler: 'CacheFirst',
-            options: {
-              cacheName: 'font-cache',
-              expiration: { maxEntries: 30, maxAgeSeconds: 86400 * 365 },
-              cacheableResponse: { statuses: [0, 200] },
-            },
-          },
           // ── Gemini / AI APIs — NetworkOnly (no point caching AI responses) ────
           {
             urlPattern: /^https:\/\/generativelanguage\.googleapis\.com\//,
             handler: 'NetworkOnly',
           },
+          // No handlers for fonts.googleapis.com, fonts.gstatic.com,
+          // static.cloudflareinsights.com, or apis.google.com.
+          // Unmatched external routes fall through to the browser without SW
+          // interception, which avoids CSP connect-src violations from SW fetch().
         ],
       },
     }),

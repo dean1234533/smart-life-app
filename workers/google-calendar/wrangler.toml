@@ -8,9 +8,16 @@ id = "c956ee48a242440794fc64c9ae019130"
 
 [vars]
 FIREBASE_PROJECT_ID = "lifeos-b7205"
+STRIPE_PRICE_MONTHLY_STARTER  = "price_1ThqBOEAMbXUn6Piiu8U0zUU"
+STRIPE_PRICE_MONTHLY_PRO      = "price_1ThqCEEAMbXUn6Piigfmnj7P"
+STRIPE_PRICE_ANNUAL_STARTER   = "price_1ThqD8EAMbXUn6Pigv8Ke1QM"
+STRIPE_PRICE_ANNUAL_PRO       = "price_1ThqEAEAMbXUn6PijQ6XEzac"
+STRIPE_PRICE_AI_PERSONAL      = "price_1ThMbLEAMbXUn6PiYY72qUiZ"
+STRIPE_PRICE_AI_PT_PRO        = "price_1ThMddEAMbXUn6PijJnzdQt8"
 
 # Secrets — set with: wrangler secret put <NAME>
 # GOOGLE_CLIENT_ID
 # GOOGLE_CLIENT_SECRET
 # APP_ORIGIN (e.g. https://smart-life-app.pages.dev)
-# Note: FIREBASE_API_KEY no longer needed — token verified via JWK
+# STRIPE_SECRET_KEY
+# STRIPE_WEBHOOK_SECRET

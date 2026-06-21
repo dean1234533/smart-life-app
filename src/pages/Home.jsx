@@ -13,7 +13,7 @@ import { useWeather } from "@/hooks/useWeather";
 
 export default function Home() {
   const uid = useCurrentUid();
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
 
   const { data: tasks = [] } = useQuery({
     queryKey: ["tasks", uid],
@@ -43,7 +43,7 @@ export default function Home() {
     initialData: [],
   });
 
-  const { weather, loading: weatherLoading, error: weatherError } = useWeather();
+  const { weather, loading: weatherLoading, error: weatherError, permState, requestLocation } = useWeather();
   const pendingTasks = tasks.filter((t) => t.status === "pending");
 
   return (
@@ -55,13 +55,15 @@ export default function Home() {
       <InstallBanner />
       <div className="px-4 space-y-6">
       <DailyBriefing
-        user={user}
+        user={profile}
         taskCount={pendingTasks.length}
         noteCount={notes.length}
         memoryCount={memories.length}
         weather={weather}
         weatherLoading={weatherLoading}
         weatherError={weatherError}
+        permState={permState}
+        requestLocation={requestLocation}
       />
       <QuickActions />
       <SmartSuggestions />

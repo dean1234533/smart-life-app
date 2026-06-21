@@ -15,10 +15,11 @@ import { toast } from "sonner";
 import { extractAndSaveCalendarEvents } from "@/utils/extractCalendarEvents";
 import {
   notesService, shoppingListsService, recipesService, mapSessionsService,
-  tasksService, contactsService, expensesService, getOrCreateUser
+  tasksService, contactsService, expensesService, calendarEventsService, getOrCreateUser
 } from "@/lib/firestoreService";
 import { invokeGemini } from "@/services/geminiService";
 import { getNearbyStores, buildDirectionsUrl } from "@/services/googleMapsService";
+import { checkGoogleCalendarStatus, pushEventToGoogle } from "@/services/googleCalendarService";
 import { useCurrentUid } from "@/hooks/useCurrentUid";
 import { useUserPrefs } from "@/hooks/useUserPrefs";
 
@@ -130,6 +131,178 @@ export default function NoteEditor() {
     },
   });
 
+  // Core analysis — shared by the manual button and auto-save on note save.
+  // Returns { result, allShoppingItems, suggestedTitle } or throws.
+  const runAnalysis = async (noteContent, noteTitle) => {
+    let pastItemsContext = '';
+    try {
+      const pastLists = await shoppingListsService.list(uid, { limit: 10 });
+      const pastItems = pastLists
+        .flatMap(l => (l.items || []).map(i => i.name || i))
+        .filter(Boolean);
+      const unique = [...new Set(pastItems)].slice(0, 40);
+      if (unique.length) {
+        pastItemsContext = `\n\nUser's past shopping items (use these to personalise suggestions): ${unique.join(', ')}`;
+      }
+    } catch {}
+
+    const today = new Date().toISOString().split('T')[0];
+    const tomorrow = new Date(Date.now()+86400000).toISOString().split('T')[0];
+
+    const prompt = `Analyze this note and extract structured data.
+
+Note: "${noteContent}"
+${noteTitle ? `Title: "${noteTitle}"` : ""}${pastItemsContext}
+
+ai_summary: Think like a human who read this note — interpret it, don't copy it. One short sentence. NEVER repeat vague phrases like "some bits", "other bits", "a few things" — translate them into what they actually mean. Never reference "the list" or "the suggestions". Include time/date if mentioned. Examples: "some bits from shops" → "Shopping trip." | "bits tomorrow at 12" → "Shopping tomorrow at 12." | "dentist tomorrow 2pm" → "Dentist tomorrow at 2pm." | "pay Dave a tenner" → "Pay Dave £10."
+
+SHOPPING RULES:
+- shopping_items = ONLY items the user explicitly named (not vague phrases like "other bits")
+- shopping_suggestions = YOUR suggestions of specific products they likely need. If ANY shopping intent is detected (even just "other bits" or "some stuff"), you MUST suggest at least 8 real products by name (e.g. "Semi-skimmed milk", "Wholemeal bread"). Use their past items above to personalise. Never leave this empty when shopping is mentioned.
+
+CALENDAR RULES (today=${today}):
+- calendar_events: extract every activity that has a time or date, even casual ones
+- Convert to ISO 8601: "tomorrow at 12" → ${tomorrow}T12:00:00, "noon"→12:00, "morning"→09:00, "afternoon"→14:00, "evening"→18:00
+- Skip only if there is truly no time or date at all
+
+Also extract: detected_intent, recipes (if meal plan), extracted_actions, new_contacts, expenses, tags, suggested_title.
+ai_suggestions: smart tips only — NEVER suggest setting reminders, adding to calendar, or creating shopping lists. The app does all of that automatically.`;
+
+    const schema = {
+      type: "object",
+      properties: {
+        ai_summary: { type: "string" },
+        detected_intent: { type: "string", enum: ["shopping", "meeting", "task", "reminder", "general", "decision", "promise", "meal_plan"] },
+        shopping_items: { type: "array", items: { type: "string" } },
+        shopping_suggestions: { type: "array", items: { type: "string" } },
+        suggested_previous_items: { type: "array", items: { type: "string" } },
+        recipes: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              title: { type: "string" },
+              ingredients: { type: "array", items: { type: "string" } },
+              instructions: { type: "string" },
+              mealPlanDays: { type: "array", items: { type: "string" } }
+            }
+          }
+        },
+        extracted_actions: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              action: { type: "string" },
+              due_date: { type: "string" },
+              priority: { type: "string", enum: ["low", "medium", "high", "urgent"] },
+              status: { type: "string" }
+            }
+          }
+        },
+        related_people: { type: "array", items: { type: "string" } },
+        related_events: { type: "array", items: { type: "string" } },
+        new_contacts: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              name: { type: "string" },
+              phone: { type: "string" },
+              email: { type: "string" },
+              notes: { type: "string" }
+            }
+          }
+        },
+        expenses: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              description: { type: "string" },
+              amount: { type: "number" },
+              currency: { type: "string" }
+            }
+          }
+        },
+        calendar_events: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              title: { type: "string" },
+              event_date: { type: "string" },
+              duration_minutes: { type: "number" },
+              location: { type: "string" },
+              attendees: { type: "array", items: { type: "string" } }
+            }
+          }
+        },
+        tags: { type: "array", items: { type: "string" } },
+        ai_suggestions: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              type: { type: "string" },
+              suggestion: { type: "string" },
+              confidence: { type: "number" }
+            }
+          }
+        },
+        suggested_title: { type: "string" }
+      }
+    };
+
+    const result = await invokeGemini(prompt, schema, uid, userApiKey);
+
+    const shoppingKeywords = /\b(shop|shops|supermarket|tesco|sainsbury|asda|lidl|aldi|morrisons|shopping|groceries|grocery|buy|buying|pick up|get some|get a few|bits and bobs|bits|some bits|other bits|a few things|some stuff|market|corner shop|co.?op)\b/i;
+    const looksLikeShopping = shoppingKeywords.test(noteContent) ||
+      result.detected_intent === 'shopping' ||
+      result.shopping_items?.length > 0;
+
+    const vaguePattern = /^(other bits?|some bits?|a few things?|some stuff|etc\.?|and more|other things?|bits and bobs|miscellaneous|other items?|various)$/i;
+    const explicitItems = (result.shopping_items || []).filter(i => !vaguePattern.test(i.trim()));
+    const hasVague = (result.shopping_items || []).some(i => vaguePattern.test(i.trim()));
+
+    let allShoppingItems = [
+      ...explicitItems,
+      ...(result.shopping_suggestions || []).filter(
+        s => !explicitItems.some(e => e.toLowerCase() === s.toLowerCase())
+      ),
+    ];
+
+    // Always run a dedicated suggestion call when shopping is detected
+    if (looksLikeShopping) {
+      try {
+        const suggestPrompt = `The user said: "${noteContent}"
+${pastItemsContext}
+
+They're going shopping. Suggest 10 specific items they probably need to buy.${explicitItems.length ? ` They mentioned: ${explicitItems.join(', ')}.` : ''}
+Use their past shopping history above to personalise the list.
+Return ONLY a JSON array of strings — real product names like "Semi-skimmed milk", "Wholemeal bread", "Free range eggs". No vague phrases. No explanation.`;
+
+        const extraSuggestions = await invokeGemini(suggestPrompt, { type: "array", items: { type: "string" } }, uid, userApiKey);
+        if (Array.isArray(extraSuggestions) && extraSuggestions.length) {
+          const deduped = extraSuggestions.filter(
+            s => !allShoppingItems.some(e => e.toLowerCase() === s.toLowerCase())
+          );
+          allShoppingItems = [...explicitItems, ...deduped];
+        }
+      } catch {}
+    }
+
+    // Parse calendar events from main result
+    const calendarEvents = (result.calendar_events || []).map(ev => {
+      const d = new Date(ev.event_date);
+      if (!ev.title || isNaN(d)) return null;
+      const end = new Date(d.getTime() + (ev.duration_minutes || 60) * 60000);
+      return { title: ev.title, event_date: d.toISOString(), end_date: end.toISOString(), location: ev.location || '', attendees: ev.attendees || [] };
+    }).filter(Boolean);
+
+    return { result, allShoppingItems, looksLikeShopping, calendarEvents };
+  };
+
   const analyzeNote = async () => {
     if (!content.trim()) return;
     setIsAnalyzing(true);
@@ -138,100 +311,15 @@ export default function NoteEditor() {
     setNearbyStores(null);
 
     try {
-      const prompt = `Analyze this note and extract ALL structured information across every category:
-
-Note content: "${content}"
-${title ? `Title: "${title}"` : ""}
-
-Extract everything present:
-1. A brief AI summary (1-2 sentences)
-2. Auto-detect the primary intent (shopping, meeting, task, reminder, general, decision, promise, meal_plan)
-3. Shopping or ingredient items needed
-4. If meal plan, generate 2-3 recipes with ingredients and instructions
-5. Action items / tasks with due dates and priority
-6. People and contacts mentioned (with phone/email if stated)
-7. Expenses mentioned (e.g. "lunch cost £30", "paid $50")
-8. Dates and events mentioned
-9. Tags
-10. Smart suggestions with confidence scores`;
-
-      const schema = {
-        type: "object",
-        properties: {
-          ai_summary: { type: "string" },
-          detected_intent: { type: "string", enum: ["shopping", "meeting", "task", "reminder", "general", "decision", "promise", "meal_plan"] },
-          shopping_items: { type: "array", items: { type: "string" } },
-          suggested_previous_items: { type: "array", items: { type: "string" } },
-          recipes: {
-            type: "array",
-            items: {
-              type: "object",
-              properties: {
-                title: { type: "string" },
-                ingredients: { type: "array", items: { type: "string" } },
-                instructions: { type: "string" },
-                mealPlanDays: { type: "array", items: { type: "string" } }
-              }
-            }
-          },
-          extracted_actions: {
-            type: "array",
-            items: {
-              type: "object",
-              properties: {
-                action: { type: "string" },
-                due_date: { type: "string" },
-                priority: { type: "string", enum: ["low", "medium", "high", "urgent"] },
-                status: { type: "string" }
-              }
-            }
-          },
-          related_people: { type: "array", items: { type: "string" } },
-          related_events: { type: "array", items: { type: "string" } },
-          new_contacts: {
-            type: "array",
-            items: {
-              type: "object",
-              properties: {
-                name: { type: "string" },
-                phone: { type: "string" },
-                email: { type: "string" },
-                notes: { type: "string" }
-              }
-            }
-          },
-          expenses: {
-            type: "array",
-            items: {
-              type: "object",
-              properties: {
-                description: { type: "string" },
-                amount: { type: "number" },
-                currency: { type: "string" }
-              }
-            }
-          },
-          tags: { type: "array", items: { type: "string" } },
-          ai_suggestions: {
-            type: "array",
-            items: {
-              type: "object",
-              properties: {
-                type: { type: "string" },
-                suggestion: { type: "string" },
-                confidence: { type: "number" }
-              }
-            }
-          },
-          suggested_title: { type: "string" }
-        }
-      };
-
-      const result = await invokeGemini(prompt, schema, uid, userApiKey);
+      const { result, allShoppingItems, looksLikeShopping, calendarEvents } = await runAnalysis(content, title);
       setAiResult(result);
       if (!title && result.suggested_title) setTitle(result.suggested_title);
 
-      // Auto-save tasks
+      if (looksLikeShopping && allShoppingItems.length) {
+        setShoppingSuggestions(allShoppingItems);
+        fetchNearbyStores();
+      }
+
       if (result.extracted_actions?.length) {
         for (const action of result.extracted_actions) {
           await tasksService.create(uid, {
@@ -245,7 +333,6 @@ Extract everything present:
         toast.success(`${result.extracted_actions.length} task${result.extracted_actions.length > 1 ? "s" : ""} saved`);
       }
 
-      // Auto-save contacts
       if (result.new_contacts?.length) {
         for (const c of result.new_contacts) {
           await contactsService.create(uid, {
@@ -258,7 +345,6 @@ Extract everything present:
         toast.success(`${result.new_contacts.length} contact${result.new_contacts.length > 1 ? "s" : ""} saved`);
       }
 
-      // Auto-save expenses
       if (result.expenses?.length) {
         for (const exp of result.expenses) {
           await expensesService.create(uid, {
@@ -270,18 +356,31 @@ Extract everything present:
         toast.success(`${result.expenses.length} expense${result.expenses.length > 1 ? "s" : ""} saved`);
       }
 
-      if ((result.detected_intent === "shopping" || result.detected_intent === "meal_plan") && result.shopping_items?.length) {
-        setShoppingSuggestions(result.shopping_items);
-        fetchNearbyStores();
-      }
       if (result.detected_intent === "meal_plan" && result.recipes?.length) {
         setRecipeSuggestions(result.recipes);
       }
 
-      const events = await extractAndSaveCalendarEvents(content, "note", isNew ? "pending" : id, uid, userApiKey);
-      if (events.length > 0) {
-        setDetectedEvents(events);
-        toast.success(`${events.length} calendar event${events.length > 1 ? "s" : ""} added automatically!`);
+      if (calendarEvents.length > 0) {
+        setDetectedEvents(calendarEvents);
+        for (const ev of calendarEvents) {
+          await calendarEventsService.create(uid, { ...ev, source_type: "note", source_id: isNew ? "pending" : id }).catch(() => {});
+        }
+        try {
+          const googleConnected = await checkGoogleCalendarStatus();
+          if (googleConnected) {
+            let pushed = 0;
+            for (const ev of calendarEvents) {
+              const ok = await pushEventToGoogle(ev);
+              if (ok) pushed++;
+            }
+            if (pushed > 0) toast.success(`${pushed} event${pushed > 1 ? "s" : ""} added to Google Calendar!`);
+            else toast.error("Calendar sync failed — try reconnecting Google Calendar in Settings.");
+          } else {
+            toast.success(`${calendarEvents.length} event${calendarEvents.length > 1 ? "s" : ""} saved. Connect Google Calendar in Settings to sync to your phone.`);
+          }
+        } catch {
+          toast.success(`${calendarEvents.length} event${calendarEvents.length > 1 ? "s" : ""} saved locally.`);
+        }
       }
     } catch {
       toast.error("Analysis failed. Please try again.");
@@ -341,81 +440,57 @@ Extract everything present:
     if (prefs.autoScan && content.trim() && !aiResult) {
       setIsAnalyzing(true);
       try {
-        const prompt = `Analyze this note and extract structured information:
-
-Note content: "${content}"
-${title ? `Title: "${title}"` : ""}
-
-Extract:
-1. A brief AI summary (1-2 sentences)
-2. Auto-detect the primary intent (shopping, meeting, task, reminder, general, decision, promise, meal_plan)
-3. If intent is "shopping" or "meal_plan", extract a list of specific items/ingredients needed
-4. If intent is "meal_plan", generate 2-3 recipes with ingredients and instructions
-5. Extract any action items with due dates if mentioned
-6. Identify people mentioned
-7. Detect any events or dates mentioned
-8. Generate relevant tags
-9. Provide smart suggestions`;
-
-        const schema = {
-          type: "object",
-          properties: {
-            ai_summary: { type: "string" },
-            detected_intent: { type: "string", enum: ["shopping", "meeting", "task", "reminder", "general", "decision", "promise", "meal_plan"] },
-            shopping_items: { type: "array", items: { type: "string" } },
-            recipes: { type: "array", items: { type: "object", properties: { title: { type: "string" }, ingredients: { type: "array", items: { type: "string" } }, instructions: { type: "string" } } } },
-            extracted_actions: { type: "array", items: { type: "object", properties: { action: { type: "string" }, due_date: { type: "string" }, priority: { type: "string" }, status: { type: "string" } } } },
-            related_people: { type: "array", items: { type: "string" } },
-            new_contacts: { type: "array", items: { type: "object", properties: { name: { type: "string" }, phone: { type: "string" }, email: { type: "string" }, notes: { type: "string" } } } },
-            expenses: { type: "array", items: { type: "object", properties: { description: { type: "string" }, amount: { type: "number" }, currency: { type: "string" } } } },
-            tags: { type: "array", items: { type: "string" } },
-            ai_suggestions: { type: "array", items: { type: "object", properties: { type: { type: "string" }, suggestion: { type: "string" }, confidence: { type: "number" } } } },
-            suggested_title: { type: "string" },
-          },
-        };
-
-        const result = await invokeGemini(prompt, schema, uid, userApiKey);
+        const { result, allShoppingItems, looksLikeShopping, calendarEvents } = await runAnalysis(content, title);
         if (!title && result.suggested_title) setTitle(result.suggested_title);
         setAiResult(result);
 
-        // Auto-save tasks
         if (result.extracted_actions?.length) {
           for (const action of result.extracted_actions)
             await tasksService.create(uid, { title: action.action, description: "", status: "pending", priority: action.priority || "medium", due_date: action.due_date || null }).catch(() => {});
           toast.success(`${result.extracted_actions.length} task${result.extracted_actions.length > 1 ? "s" : ""} saved`);
         }
 
-        // Auto-save contacts
         if (result.new_contacts?.length) {
           for (const c of result.new_contacts)
             await contactsService.create(uid, { name: c.name, phone: c.phone || "", email: c.email || "", notes: c.notes || "" }).catch(() => {});
           toast.success(`${result.new_contacts.length} contact${result.new_contacts.length > 1 ? "s" : ""} saved`);
         }
 
-        // Auto-save expenses
         if (result.expenses?.length) {
           for (const exp of result.expenses)
             await expensesService.create(uid, { description: exp.description, amount: exp.amount, currency: exp.currency || "GBP" }).catch(() => {});
           toast.success(`${result.expenses.length} expense${result.expenses.length > 1 ? "s" : ""} saved`);
         }
 
-        // Auto-accept shopping list
-        if ((result.detected_intent === "shopping" || result.detected_intent === "meal_plan") && result.shopping_items?.length) {
+        if (looksLikeShopping && allShoppingItems.length) {
           await shoppingListsService.create(uid, {
-            items: result.shopping_items.map((item) => ({ name: item, checked: false })),
+            items: allShoppingItems.map((item) => ({ name: item, checked: false })),
             title: title || result.suggested_title || "Shopping List",
           });
-          toast.success(`Shopping list saved (${result.shopping_items.length} items)`);
+          toast.success(`Shopping list saved (${allShoppingItems.length} items)`);
         }
 
-        // Auto-accept recipes
         if (result.detected_intent === "meal_plan" && result.recipes?.length) {
           for (const recipe of result.recipes) await recipesService.create(uid, recipe);
           toast.success(`${result.recipes.length} recipes saved`);
         }
 
-        // Auto-extract calendar events
-        await extractAndSaveCalendarEvents(content, "note", "pending", uid, userApiKey);
+        if (calendarEvents.length > 0) {
+          for (const ev of calendarEvents) {
+            await calendarEventsService.create(uid, { ...ev, source_type: "note", source_id: "pending" }).catch(() => {});
+          }
+          try {
+            const googleConnected = await checkGoogleCalendarStatus();
+            if (googleConnected) {
+              for (const ev of calendarEvents) await pushEventToGoogle(ev).catch(() => {});
+              toast.success(`${calendarEvents.length} event${calendarEvents.length > 1 ? "s" : ""} added to Google Calendar!`);
+            } else {
+              toast.success(`${calendarEvents.length} calendar event${calendarEvents.length > 1 ? "s" : ""} saved.`);
+            }
+          } catch {
+            toast.success(`${calendarEvents.length} calendar event${calendarEvents.length > 1 ? "s" : ""} saved.`);
+          }
+        }
 
         const saveData = {
           title: title || result.suggested_title || "Untitled Note",

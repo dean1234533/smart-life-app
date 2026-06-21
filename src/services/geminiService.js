@@ -235,9 +235,16 @@ export async function invokeGemini(prompt, jsonSchema = null, uid = '', userApiK
     ]);
   }
 
+  // Non-admin users: their own key first, then admin keys as shared fallback
   return runWithFallback([
     ...local,
     ...(userApiKey ? [[userApiKey, (k) => callGemini(k, prompt, jsonSchema)]] : []),
+    [ADMIN_GEMINI_KEY,     (k) => callGemini(k, prompt, jsonSchema)],
+    [ADMIN_GROQ_KEY,       (k) => callGroq(k, prompt, jsonSchema)],
+    [ADMIN_CEREBRAS_KEY,   (k) => callCerebras(k, prompt, jsonSchema)],
+    [ADMIN_MISTRAL_KEY,    (k) => callMistral(k, prompt, jsonSchema)],
+    [ADMIN_TOGETHER_KEY,   (k) => callTogether(k, prompt, jsonSchema)],
+    [ADMIN_OPENROUTER_KEY, (k) => callOpenRouter(k, prompt, jsonSchema)],
   ]);
 }
 
@@ -320,8 +327,15 @@ export async function transcribeAudio(audioBlob, uid = '', userApiKey = '') {
     throw new Error('No transcription key available — add VITE_GEMINI_API_KEY or VITE_GROQ_API_KEY');
   }
 
-  if (!userApiKey) throw new Error('No API key configured');
-  return callGemini(userApiKey, '', null, parts);
+  // Use user's own key first, then fall back to admin keys
+  const geminiKey = userApiKey || ADMIN_GEMINI_KEY;
+  if (geminiKey) {
+    try { return await callGemini(geminiKey, '', null, parts); } catch (err) {
+      if (!shouldFallthrough(err)) throw err;
+    }
+  }
+  if (ADMIN_GROQ_KEY) return transcribeWithGroq(ADMIN_GROQ_KEY, audioBlob);
+  throw new Error('No transcription key available');
 }
 
 // ── Exported helpers for Settings UI ─────────────────────────────────────────

@@ -3,7 +3,7 @@ import { useNavigate, Link } from "react-router-dom";
 import { Key, Loader2, Eye, EyeOff, Check,
   LogOut, ArrowLeft, Shield, Bell, Calendar, ExternalLink, Sparkles,
   Link2, Link2Off,
-  Trash2, FileJson, AlertTriangle
+  Trash2, FileJson, AlertTriangle, User
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -27,6 +27,9 @@ export default function Settings() {
   const isAdmin = uid === ADMIN_UID;
   const { prefs, loading, setPref } = useUserPrefs();
 
+  const [fullName, setFullName] = useState("");
+  const [savingName, setSavingName] = useState(false);
+
   const [apiKey, setApiKey] = useState("");
   const [showKey, setShowKey] = useState(false);
   const [savingKey, setSavingKey] = useState(false);
@@ -34,6 +37,9 @@ export default function Settings() {
   const [notifLoading, setNotifLoading] = useState(false);
   const [googleConnected, setGoogleConnected] = useState(false);
   const [connectingGoogle, setConnectingGoogle] = useState(false);
+  // Subscription
+  const [subscription, setSubscription] = useState(null);
+  const [portalLoading, setPortalLoading] = useState(false);
   // GDPR
   const [exportingData, setExportingData] = useState(false);
   const [deletingAccount, setDeletingAccount] = useState(false);
@@ -43,6 +49,25 @@ export default function Settings() {
 
 
   useEffect(() => {
+    if (uid) {
+      getOrCreateUser(uid).then(p => { if (p?.full_name) setFullName(p.full_name); });
+    }
+  }, [uid]);
+
+  const saveName = async () => {
+    if (!uid || !fullName.trim()) return;
+    setSavingName(true);
+    try {
+      await updateUserDoc(uid, { full_name: fullName.trim() });
+      toast.success("Name saved");
+    } catch {
+      toast.error("Failed to save name");
+    } finally {
+      setSavingName(false);
+    }
+  };
+
+  useEffect(() => {
     checkGoogleCalendarStatus().then(setGoogleConnected);
     const params = new URLSearchParams(window.location.search);
     if (params.get('calendar') === 'connected') {
@@ -50,10 +75,47 @@ export default function Settings() {
       toast.success('Google Calendar connected!');
       window.history.replaceState({}, '', '/settings');
     }
-    // Reflect current push subscription state
     isPushSubscribed().then(setNotificationsEnabled);
   }, []);
 
+  useEffect(() => {
+    if (!uid) return;
+    const workerUrl = import.meta.env.VITE_CALENDAR_WORKER_URL;
+    if (!workerUrl) return;
+    firebaseAuth.currentUser?.getIdToken().then(idToken => {
+      fetch(`${workerUrl}/stripe/subscription`, {
+        headers: { Authorization: `Firebase ${idToken}` },
+      })
+        .then(r => r.json())
+        .then(data => { if (data?.plan) setSubscription(data); })
+        .catch(() => {});
+    });
+  }, [uid]);
+
+
+  const handleManageSubscription = async () => {
+    const workerUrl = import.meta.env.VITE_CALENDAR_WORKER_URL;
+    if (!workerUrl) return;
+    setPortalLoading(true);
+    try {
+      const idToken = await firebaseAuth.currentUser?.getIdToken();
+      const resp = await fetch(`${workerUrl}/stripe/portal`, {
+        method: 'POST',
+        headers: { Authorization: `Firebase ${idToken}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ returnUrl: window.location.origin + '/settings' }),
+      });
+      const data = await resp.json();
+      if (data.url) {
+        window.location.href = data.url;
+      } else {
+        toast.error(data.error || 'Could not open billing portal');
+      }
+    } catch {
+      toast.error('Something went wrong. Please try again.');
+    } finally {
+      setPortalLoading(false);
+    }
+  };
 
   const saveApiKey = async () => {
     if (!uid || !apiKey.trim()) return;
@@ -230,6 +292,28 @@ export default function Settings() {
       <div className="space-y-5">
         <section className="p-4 rounded-2xl bg-card border border-border/50 space-y-4">
           <div className="flex items-center gap-2">
+            <User className="w-4 h-4 text-accent" />
+            <h2 className="text-sm font-heading font-semibold">Profile</h2>
+          </div>
+          <p className="text-xs text-muted-foreground">Your name is used in greetings throughout the app.</p>
+          <div className="flex gap-2">
+            <Input
+              type="text"
+              value={fullName}
+              onChange={e => setFullName(e.target.value)}
+              placeholder="Your full name"
+              className="rounded-xl"
+              onKeyDown={e => e.key === 'Enter' && saveName()}
+            />
+            <Button onClick={saveName} disabled={!fullName.trim() || savingName}
+              size="sm" className="rounded-xl bg-accent text-accent-foreground hover:bg-accent/90 shrink-0">
+              {savingName ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <><Check className="w-3.5 h-3.5 mr-1.5" />Save</>}
+            </Button>
+          </div>
+        </section>
+
+        <section className="p-4 rounded-2xl bg-card border border-border/50 space-y-4">
+          <div className="flex items-center gap-2">
             <Key className="w-4 h-4 text-accent" />
             <h2 className="text-sm font-heading font-semibold">Gemini API Key</h2>
             {isAdmin && (
@@ -378,6 +462,38 @@ export default function Settings() {
             </Button>
           </div>
         </section>
+
+        {/* Subscription */}
+        {subscription && (
+          <section className="p-4 rounded-2xl bg-card border border-border/50 space-y-3">
+            <div className="flex items-center gap-2">
+              <Sparkles className="w-4 h-4 text-accent" />
+              <h2 className="text-sm font-heading font-semibold">Subscription</h2>
+            </div>
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium capitalize">{subscription.plan} Plan</p>
+                <p className="text-xs text-muted-foreground capitalize">
+                  {subscription.status === 'active' ? 'Active' : subscription.status}
+                  {subscription.periodEnd ? ` · renews ${new Date(subscription.periodEnd).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}` : ''}
+                </p>
+              </div>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={handleManageSubscription}
+                disabled={portalLoading}
+                className="rounded-xl gap-1.5 shrink-0"
+              >
+                {portalLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ExternalLink className="w-3.5 h-3.5" />}
+                Manage
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Cancel, update payment method, or view invoices via the billing portal.
+            </p>
+          </section>
+        )}
 
         {/* GDPR — Data & Privacy */}
         <section className="p-4 rounded-2xl bg-card border border-border/50 space-y-4">

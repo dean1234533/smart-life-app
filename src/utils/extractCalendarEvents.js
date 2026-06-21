@@ -4,21 +4,25 @@ import { calendarEventsService } from '@/lib/firestoreService';
 export async function extractAndSaveCalendarEvents(text, sourceType, sourceId, uid = '', userApiKey = '') {
   if (!text?.trim()) return [];
 
-  const today = new Date().toISOString().split("T")[0];
+  const now = new Date();
+  const today = now.toISOString().split("T")[0];
+  const currentTime = now.toTimeString().slice(0, 5);
 
-  const prompt = `Today's date is ${today}. Analyze the following text and extract any meetings, appointments, events, or deadlines that have a specific date/time mentioned.
+  const prompt = `Today is ${today} and the current time is ${currentTime}. Extract EVERY planned activity, appointment, errand, trip, or commitment from the text below that has ANY date or time reference — no matter how casual.
 
 Text: "${text}"
 
-For each event found, determine:
-- The event title/description
-- The exact date and time (convert relative expressions like "today", "tomorrow", "next Monday", "at noon" to absolute ISO datetime using today as ${today})
-- Duration in minutes (default 60 if not mentioned)
-- Who is involved (attendees)
-- Location if mentioned
-- A reminder time in minutes before the event (default 30)
+Be generous: "tomorrow at 12", "meeting Tuesday", "going to the shops at noon", "dentist Friday", "pay Dave at 3", "drinks tonight", "call her in the morning" are ALL valid events. Do not skip anything with a time or date.
 
-Only extract events with a clear date/time reference. Ignore vague future references with no time.`;
+For each event:
+- Write a clear short title (e.g. "Shopping trip", "Pay Dave", "Dentist appointment")
+- Convert relative times to absolute ISO datetime: "tomorrow at 12" → ${new Date(now.getTime() + 86400000).toISOString().split("T")[0]}T12:00:00, "tonight at 7" → ${today}T19:00:00, "noon" → 12:00:00
+- Duration in minutes (default 60)
+- Attendees if mentioned
+- Location if mentioned
+- Reminder in minutes before (default 30)
+
+If no date or time is mentioned at all, skip it.`;
 
   const schema = {
     type: "object",

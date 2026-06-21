@@ -1,6 +1,7 @@
 import { useNavigate, useParams } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Mic, Sparkles, CheckCircle2, CalendarDays, Users, Trash2, Handshake, Milestone, Clock } from "lucide-react";
+import { ArrowLeft, Mic, Sparkles, CheckCircle2, CalendarDays, Users, Trash2, Handshake, Milestone, Clock, ChevronDown, Tag } from "lucide-react";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { motion } from "framer-motion";
@@ -8,6 +9,63 @@ import { format } from "date-fns";
 import { toast } from "sonner";
 import { recordingsService } from "@/lib/firestoreService";
 import { useCurrentUid } from "@/hooks/useCurrentUid";
+
+function TopicSegment({ segment, index }) {
+  const [open, setOpen] = useState(index === 0);
+  const colors = [
+    'bg-accent/8 border-accent/20 text-accent',
+    'bg-success/8 border-success/20 text-success',
+    'bg-chart-1/8 border-chart-1/20 text-chart-1',
+    'bg-chart-5/8 border-chart-5/20 text-chart-5',
+    'bg-destructive/8 border-destructive/20 text-destructive',
+    'bg-chart-2/8 border-chart-2/20 text-chart-2',
+  ];
+  const colorClass = colors[index % colors.length];
+  const [bg, border, text] = colorClass.split(' ');
+
+  return (
+    <div className={`rounded-2xl border ${border} ${bg} overflow-hidden`}>
+      <button
+        onClick={() => setOpen(o => !o)}
+        className="w-full flex items-center justify-between p-4 text-left"
+      >
+        <div className="flex items-center gap-2.5 min-w-0">
+          <Tag className={`w-3.5 h-3.5 shrink-0 ${text}`} />
+          <span className={`text-sm font-heading font-semibold ${text}`}>{segment.topic}</span>
+        </div>
+        <ChevronDown className={`w-4 h-4 shrink-0 text-muted-foreground transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open && (
+        <div className="px-4 pb-4 space-y-3">
+          {segment.summary && (
+            <p className="text-sm text-muted-foreground leading-relaxed">{segment.summary}</p>
+          )}
+          {segment.key_points?.length > 0 && (
+            <ul className="space-y-1.5">
+              {segment.key_points.map((pt, i) => (
+                <li key={i} className="flex items-start gap-2 text-sm">
+                  <span className={`mt-1.5 w-1.5 h-1.5 rounded-full shrink-0 ${text.replace('text-', 'bg-')}`} />
+                  {pt}
+                </li>
+              ))}
+            </ul>
+          )}
+          {segment.text && (
+            <details className="group">
+              <summary className="text-xs text-muted-foreground cursor-pointer hover:text-foreground list-none flex items-center gap-1 mt-2">
+                <ChevronDown className="w-3 h-3 group-open:rotate-180 transition-transform" />
+                View transcript excerpt
+              </summary>
+              <p className="mt-2 text-xs text-muted-foreground leading-relaxed border-l-2 border-border pl-3 italic">
+                {segment.text}
+              </p>
+            </details>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function RecordingDetail() {
   const { id } = useParams();
@@ -91,11 +149,29 @@ export default function RecordingDetail() {
           </motion.div>
         )}
 
-        {recording.transcription && (
-          <div className="p-4 rounded-2xl bg-muted/50">
-            <h3 className="text-xs font-heading font-semibold text-muted-foreground uppercase tracking-wider mb-2">Transcription</h3>
-            <p className="text-sm leading-relaxed">{recording.transcription}</p>
+        {recording.topic_segments?.length > 0 && (
+          <div>
+            <h3 className="text-xs font-heading font-semibold text-muted-foreground uppercase tracking-wider mb-3">
+              Topics Discussed · {recording.topic_segments.length}
+            </h3>
+            <div className="space-y-2">
+              {recording.topic_segments.map((seg, i) => (
+                <TopicSegment key={i} segment={seg} index={i} />
+              ))}
+            </div>
           </div>
+        )}
+
+        {recording.transcription && (
+          <details className="group">
+            <summary className="text-xs font-heading font-semibold text-muted-foreground uppercase tracking-wider cursor-pointer hover:text-foreground list-none flex items-center gap-1.5">
+              <ChevronDown className="w-3.5 h-3.5 group-open:rotate-180 transition-transform" />
+              Full Transcription
+            </summary>
+            <div className="mt-2 p-4 rounded-2xl bg-muted/50">
+              <p className="text-sm leading-relaxed">{recording.transcription}</p>
+            </div>
+          </details>
         )}
 
         {recording.tags?.length > 0 && (

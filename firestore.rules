@@ -68,7 +68,12 @@ service cloud.firestore {
 
       match /bookings/{docId} {
         allow read: if true; // public — needed to check slot availability
-        allow create: if true; // public — visitors create their own bookings
+        allow create: if true // public — visitors create their own bookings
+          && request.resource.data.keys().hasAll(['start', 'end', 'name', 'email'])
+          && request.resource.data.name is string
+          && request.resource.data.name.size() <= 100
+          && request.resource.data.email is string
+          && request.resource.data.email.size() <= 200;
         allow update, delete: if isAuth() && isOwner(uid);
       }
 
@@ -128,10 +133,12 @@ service cloud.firestore {
       );
     }
 
-    // Slug index: public read for booking pages, owner can write
+    // Slug index: public read for booking pages, only the slug owner can write
     match /slugIndex/{slugId} {
       allow read: if true;
-      allow write: if isAuth();
+      allow create: if isAuth() && request.resource.data.uid == request.auth.uid;
+      allow update: if isAuth() && resource.data.uid == request.auth.uid;
+      allow delete: if isAuth() && resource.data.uid == request.auth.uid;
     }
 
     // Mirror rooms — WebRTC signaling for screen casting.

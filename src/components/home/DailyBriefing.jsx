@@ -14,7 +14,7 @@ function ForecastDay({ day }) {
   );
 }
 
-export default function DailyBriefing({ user, taskCount, noteCount, memoryCount, weather, weatherLoading, weatherError }) {
+export default function DailyBriefing({ user, taskCount, noteCount, memoryCount, weather, weatherLoading, weatherError, permState, requestLocation }) {
   const hour = new Date().getHours();
   const greeting = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
   const Icon = hour < 12 ? Sun : hour < 18 ? CloudSun : Moon;
@@ -88,12 +88,31 @@ export default function DailyBriefing({ user, taskCount, noteCount, memoryCount,
           </div>
         )}
 
-        {!weatherLoading && weatherError && (
+        {permState === 'idle' && !weather && !weatherLoading && (
+          <div className="mb-4 rounded-xl bg-white/10 p-3 backdrop-blur-sm flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2 min-w-0">
+              <MapPin className="w-4 h-4 text-white/70 shrink-0" />
+              <p className="text-xs text-white/70">Enable weather for your location</p>
+            </div>
+            <button
+              onClick={requestLocation}
+              className="shrink-0 text-xs font-semibold bg-white/20 hover:bg-white/30 text-white px-3 py-1.5 rounded-lg transition-colors"
+            >
+              Enable
+            </button>
+          </div>
+        )}
+
+        {permState === 'denied' && (
           <p className="text-xs text-primary-foreground/50 mb-4 flex items-center gap-1">
             <MapPin className="w-3 h-3" />
-            {weatherError === 'Location access denied'
-              ? 'Allow location access to see weather'
-              : 'Weather unavailable'}
+            Location blocked — allow it in your browser settings to see weather
+          </p>
+        )}
+
+        {!weatherLoading && weatherError && weatherError !== 'denied' && (
+          <p className="text-xs text-primary-foreground/50 mb-4 flex items-center gap-1">
+            <MapPin className="w-3 h-3" />Weather unavailable
           </p>
         )}
 

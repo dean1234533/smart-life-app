@@ -73,6 +73,7 @@ export async function pushEventToGoogle(event) {
     const startDt = event.event_date || event.date;
     const endDt = event.end_date || new Date(new Date(startDt).getTime() + 60 * 60 * 1000).toISOString();
 
+    const reminderMinutes = event.reminder_minutes || 30;
     const resp = await fetch(`${WORKER_URL}/calendar/events`, {
       method: 'POST',
       headers: workerHeaders(idToken),
@@ -85,6 +86,12 @@ export async function pushEventToGoogle(event) {
         attendees: (event.attendees || [])
           .filter((a) => typeof a === 'string' && a.includes('@'))
           .map((email) => ({ email })),
+        reminders: {
+          useDefault: false,
+          overrides: [
+            { method: 'popup', minutes: reminderMinutes },
+          ],
+        },
       }),
     });
     if (!resp.ok) return null;
