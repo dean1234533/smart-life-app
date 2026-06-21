@@ -21,6 +21,12 @@
     <meta name="description" content="Your AI-powered life organizer" />
   </head>
   <body>
+    <!-- Canonical domain redirect -->
+    <script>
+      if (location.hostname === 'smart-life-app.pages.dev') {
+        location.replace('https://dbworkouts.co.uk' + location.pathname + location.search + location.hash);
+      }
+    </script>
     <!-- Force-clear stale service workers from old app versions.
          Increment SW_VERSION whenever a cached old SW is causing problems. -->
     <script>
