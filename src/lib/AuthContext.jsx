@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useEffect } from 'react';
-import { onAuthStateChanged } from 'firebase/auth';
+import { onAuthStateChanged, getRedirectResult } from 'firebase/auth';
 import { firebaseAuth } from '@/lib/firebase';
 
 const ADMIN_UID = import.meta.env.VITE_ADMIN_UID || '';
@@ -11,6 +11,11 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [profile, setProfile] = useState(null);
   const [isLoadingAuth, setIsLoadingAuth] = useState(true);
+
+  useEffect(() => {
+    // Handle Google redirect result (iOS PWA fallback from signInWithRedirect)
+    getRedirectResult(firebaseAuth).catch(() => {});
+  }, []);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(firebaseAuth, async (firebaseUser) => {

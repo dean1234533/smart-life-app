@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { signInWithEmailAndPassword, signInWithPopup, GoogleAuthProvider } from "firebase/auth";
+import { signInWithEmailAndPassword, signInWithPopup, signInWithRedirect, GoogleAuthProvider } from "firebase/auth";
 import { firebaseAuth } from "@/lib/firebase";
 
 import { Button } from "@/components/ui/button";
@@ -34,11 +34,21 @@ export default function Login() {
   };
 
   const handleGoogle = async () => {
+    const provider = new GoogleAuthProvider();
     try {
-      await signInWithPopup(firebaseAuth, new GoogleAuthProvider());
+      // Try popup first; falls back to redirect if popup is blocked (iOS PWA)
+      await signInWithPopup(firebaseAuth, provider);
       navigate("/");
     } catch (err) {
-      if (err.code !== "auth/popup-closed-by-user") {
+      if (err.code === "auth/popup-blocked" || err.code === "auth/popup-cancelled-by-user") {
+        // Popup blocked (iOS Safari PWA) — use redirect flow instead
+        try {
+          await signInWithRedirect(firebaseAuth, provider);
+          // Page navigates away; AuthContext handles result on return
+        } catch (redirectErr) {
+          setError(redirectErr.message || "Google sign-in failed");
+        }
+      } else if (err.code !== "auth/popup-closed-by-user") {
         setError(err.message || "Google sign-in failed");
       }
     }
