@@ -175,7 +175,7 @@ export default function LandingPage() {
           <div style={{ display: 'flex', alignItems: 'center', gap: 32 }} className="landing-desktop-nav">
             <a href="#features" style={navLinkStyle}>Features</a>
             <a href="#pricing" style={navLinkStyle}>Pricing</a>
-            <Link to="/login" style={navLinkStyle}>Sign in</Link>
+            <a href="https://smart-life-app.pages.dev/login" style={navLinkStyle}>Sign in</a>
             <a href="#pricing" style={btnRedStyle}>Get Started</a>
           </div>
 
@@ -193,7 +193,7 @@ export default function LandingPage() {
           <div style={{ background: '#0a0a0a', borderTop: '1px solid rgba(255,255,255,0.08)', padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 16 }}>
             <a href="#features" style={navLinkStyle} onClick={() => setMobileOpen(false)}>Features</a>
             <a href="#pricing" style={navLinkStyle} onClick={() => setMobileOpen(false)}>Pricing</a>
-            <Link to="/login" style={navLinkStyle} onClick={() => setMobileOpen(false)}>Sign in</Link>
+            <a href="https://smart-life-app.pages.dev/login" style={navLinkStyle} onClick={() => setMobileOpen(false)}>Sign in</a>
             <a href="#pricing" style={{ ...btnRedStyle, textAlign: 'center' }} onClick={() => setMobileOpen(false)}>Get Started</a>
           </div>
         )}
@@ -217,7 +217,7 @@ export default function LandingPage() {
             <a href="#pricing" style={btnRedStyle}>
               Start today <ArrowRight size={16} style={{ display: 'inline', verticalAlign: 'middle', marginLeft: 6 }} />
             </a>
-            <Link to="/login" style={btnOutlineStyle}>Sign in to your account</Link>
+            <a href="https://smart-life-app.pages.dev/login" style={btnOutlineStyle}>Sign in to your account</a>
           </div>
           <div style={{ marginTop: 40, display: 'flex', flexWrap: 'wrap', gap: 24, justifyContent: 'center' }}>
             {['Cancel anytime', 'Works offline', 'Google Calendar sync'].map(t => (
@@ -355,7 +355,7 @@ export default function LandingPage() {
             <a href="#pricing" style={btnRedStyle}>
               Get started today <ArrowRight size={15} style={{ display: 'inline', verticalAlign: 'middle', marginLeft: 6 }} />
             </a>
-            <Link to="/login" style={btnOutlineStyle}>Sign in</Link>
+            <a href="https://smart-life-app.pages.dev/login" style={btnOutlineStyle}>Sign in</a>
           </div>
         </div>
       </section>
@@ -373,7 +373,7 @@ export default function LandingPage() {
             <a href="https://dbworkouts.co.uk" style={footerLinkStyle}>Home</a>
             <a href="https://dbworkouts.co.uk/pricing" style={footerLinkStyle}>Services & Pricing</a>
             <a href="https://dbworkouts.co.uk/contact" style={footerLinkStyle}>Contact</a>
-            <Link to="/login" style={footerLinkStyle}>App Login</Link>
+            <a href="https://smart-life-app.pages.dev/login" style={footerLinkStyle}>App Login</a>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             <p style={{ fontSize: 11, letterSpacing: '0.18em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.3)', margin: 0 }}>Contact</p>
