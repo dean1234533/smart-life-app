@@ -47,39 +47,14 @@ const ADMIN_UID = import.meta.env.VITE_ADMIN_UID || '';
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isAuthenticated, user } = useAuth();
-  const [needsApiKey, setNeedsApiKey] = useState(false);
-  const [apiKeyChecked, setApiKeyChecked] = useState(false);
-
   useEffect(() => {
-    if (isLoadingAuth || !isAuthenticated || !user?.uid) {
-      if (!isLoadingAuth) setApiKeyChecked(true);
-      return;
-    }
+    if (isLoadingAuth || !isAuthenticated || !user?.uid) return;
     // Fire task reminders + weather alerts once on login/startup
     import('@/services/notificationService').then(({ checkTaskReminders, checkWeatherAlerts }) => {
       checkTaskReminders(user.uid);
       checkWeatherAlerts();
     });
-    const checkApiKey = async () => {
-      if (user.uid === ADMIN_UID) { setApiKeyChecked(true); return; }
-      try {
-        const { getOrCreateUser } = await import('@/lib/firestoreService');
-        const profile = await getOrCreateUser(user.uid);
-        setNeedsApiKey(!profile?.apiKey);
-      } catch {
-        setNeedsApiKey(false);
-      } finally {
-        setApiKeyChecked(true);
-      }
-    };
-    checkApiKey();
   }, [user, isLoadingAuth, isAuthenticated]);
-
-  const handleApiKeySave = async (key) => {
-    const { updateUserDoc } = await import('@/lib/firestoreService');
-    await updateUserDoc(user.uid, { apiKey: key });
-    setNeedsApiKey(false);
-  };
 
   if (isLoadingAuth) {
     return (
@@ -90,10 +65,6 @@ const AuthenticatedApp = () => {
         </div>
       </div>
     );
-  }
-
-  if (isAuthenticated && apiKeyChecked && needsApiKey && user?.uid !== ADMIN_UID) {
-    return <ApiKeyGate onSave={handleApiKeySave} />;
   }
 
   return (
