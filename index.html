@@ -21,6 +21,14 @@
     <meta name="description" content="Your AI-powered life organizer" />
   </head>
   <body>
+    <!-- Auto-reload when a new service worker takes over (picks up new app version) -->
+    <script>
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.addEventListener('controllerchange', function () {
+          window.location.reload();
+        });
+      }
+    </script>
     <!-- Force-clear stale service workers from old app versions.
          Increment SW_VERSION whenever a cached old SW is causing problems. -->
     <script>

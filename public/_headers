@@ -1,3 +1,10 @@
+# Never cache the service worker itself — browser must always fetch fresh to detect updates
+/sw.js
+  Cache-Control: no-store, no-cache, must-revalidate
+
+/registerSW.js
+  Cache-Control: no-store, no-cache, must-revalidate
+
 /*
   Cross-Origin-Opener-Policy: same-origin-allow-popups
   Cross-Origin-Embedder-Policy: unsafe-none
