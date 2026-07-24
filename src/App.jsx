@@ -49,10 +49,12 @@ const AuthenticatedApp = () => {
   const { isLoadingAuth, isAuthenticated, user } = useAuth();
   useEffect(() => {
     if (isLoadingAuth || !isAuthenticated || !user?.uid) return;
-    // Fire task reminders + weather alerts once on login/startup
     import('@/services/notificationService').then(({ checkTaskReminders, checkWeatherAlerts }) => {
       checkTaskReminders(user.uid);
       checkWeatherAlerts();
+      // Re-check weather every 30 minutes while app is open
+      const interval = setInterval(checkWeatherAlerts, 30 * 60 * 1000);
+      return () => clearInterval(interval);
     });
   }, [user, isLoadingAuth, isAuthenticated]);
 
