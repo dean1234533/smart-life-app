@@ -49,13 +49,25 @@ const AuthenticatedApp = () => {
   const { isLoadingAuth, isAuthenticated, user } = useAuth();
   useEffect(() => {
     if (isLoadingAuth || !isAuthenticated || !user?.uid) return;
-    import('@/services/notificationService').then(({ checkTaskReminders, checkWeatherAlerts }) => {
-      checkTaskReminders(user.uid);
-      checkWeatherAlerts();
-      // Re-check weather every 30 minutes while app is open
-      const interval = setInterval(checkWeatherAlerts, 30 * 60 * 1000);
-      return () => clearInterval(interval);
-    });
+    let interval;
+    import('@/services/notificationService').then(
+      ({ checkTaskReminders, checkWeatherAlerts, isPushSubscribed, subscribeToPush, notificationPermission }) => {
+        checkTaskReminders(user.uid);
+        checkWeatherAlerts();
+        interval = setInterval(checkWeatherAlerts, 30 * 60 * 1000);
+
+        // If permission is granted but subscription was lost (e.g. after SW reset), auto-resubscribe
+        if (notificationPermission() === 'granted') {
+          isPushSubscribed().then(async (subscribed) => {
+            if (!subscribed) {
+              const idToken = await user.getIdToken().catch(() => null);
+              if (idToken) subscribeToPush(idToken).catch(() => {});
+            }
+          });
+        }
+      }
+    );
+    return () => clearInterval(interval);
   }, [user, isLoadingAuth, isAuthenticated]);
 
   if (isLoadingAuth) {

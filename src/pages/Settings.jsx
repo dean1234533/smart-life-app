@@ -417,6 +417,18 @@ export default function Settings() {
               : <Switch checked={notificationsEnabled} onCheckedChange={toggleNotifications} />
             }
           </div>
+          {notificationsEnabled && (
+            <button
+              className="text-xs text-accent underline"
+              onClick={async () => {
+                const { showLocalNotification } = await import('@/services/notificationService');
+                await showLocalNotification('Test notification ✅', 'Notifications are working!', '/');
+                toast.success('Test sent — check your notifications');
+              }}
+            >
+              Send test notification
+            </button>
+          )}
         </section>
 
         <section className="p-4 rounded-2xl bg-card border border-border/50 space-y-4">
